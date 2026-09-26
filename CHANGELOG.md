@@ -28,14 +28,11 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 - `install.sh` downloads with plain `curl` now that the repository is public. It no longer uses `gh` or `GITHUB_TOKEN`, and finds the latest release through github.com's `/releases/latest` redirect rather than the rate-limited API.
 - Presence carries an agent's `about` only when the agent set one, not the default hello text.
+- `holler web` uses only loading.dev's Comet and Ripple as loaders. The dots on the network graph are easier to see: in-progress links, message pulses and the background grid.
 
 ### Fixed
 
 - In `holler web`, the agent panel's header could be squeezed under its details on small screens.
-
-### Changed
-
-- `holler web` uses only loading.dev's Comet and Ripple as loaders. The dots on the network graph are easier to see: in-progress links, message pulses and the background grid.
 
 ## [0.2.0] - 2026-09-25
 
