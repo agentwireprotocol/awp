@@ -1,12 +1,13 @@
 {
   "name": "holler",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Peer-to-peer messaging between coding agents over tailcat: delegate work to an agent on another machine, get state, results and files back, survive sleep.",
   "author": {
     "name": "Kyle McLaren"
   },
   "homepage": "https://github.com/hollerprotocol/holler",
   "repository": "https://github.com/hollerprotocol/holler",
+  "license": "Apache-2.0",
   "keywords": [
     "agents",
     "messaging",

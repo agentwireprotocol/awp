@@ -5,7 +5,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/hollerprotocol/holler/main/install.sh | sh
 #
 # Settings (environment variables):
-#   HOLLER_VERSION=0.2.0            install this release (default: the latest)
+#   HOLLER_VERSION=0.3.0            install this release (default: the latest)
 #   HOLLER_INSTALL_DIR=~/bin        where the binary goes (default: ~/.local/bin)
 #   HOLLER_BOOTSTRAP=ask|all|none   set up agent harnesses afterwards (default: ask
 #                                   when there is a terminal, otherwise print how)

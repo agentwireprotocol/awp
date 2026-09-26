@@ -23,6 +23,7 @@ mkdir -p "$stage"
 plugin=$stage/holler
 cp -R "$root/plugin/holler" "$plugin"
 rm -f "$plugin"/libexec/holler-* "$plugin/libexec/.gitkeep"
+cp "$root/LICENSE" "$plugin/"
 
 cd "$root"
 for p in $platforms; do
@@ -32,8 +33,8 @@ for p in $platforms; do
   pkg=$stage/$os-$arch
   mkdir -p "$pkg"
   CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "$ldflags" -o "$pkg/holler" ./cmd/holler
-  cp README.md SPEC.md "$pkg/"
-  tar -C "$pkg" -czf "$dist/holler_${version}_${os}_${arch}.tar.gz" holler README.md SPEC.md
+  cp README.md SPEC.md LICENSE "$pkg/"
+  tar -C "$pkg" -czf "$dist/holler_${version}_${os}_${arch}.tar.gz" holler README.md SPEC.md LICENSE
   cp "$pkg/holler" "$plugin/libexec/holler-$os-$arch"
 done
 

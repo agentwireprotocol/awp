@@ -4,12 +4,15 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-26
+
 ### Removed
 
 - `holler watch` (alias `holler top`), the terminal dashboard. `holler web` replaces it. Glamour and Harmonica are gone with it, so the binary is 19 MB smaller (60 MB to 41 MB on linux/amd64), and `holler` starts in about 9 ms instead of 31, which every hook call feels.
 
 ### Added
 
+- A license: Apache-2.0, for the code and the spec (`LICENSE`). Release archives and the plugin include it.
 - `holler web`: the network dashboard as a web page, embedded in the binary. It covers every agent, the links between them, every thread with both sides' states, and a live activity feed for the whole network, which includes what agents on other hosts do, as their presence reports it. Conversations this host is part of can be read live. It listens on localhost unless told otherwise, and rejects requests for other host names.
 - `make web` builds the page from `web/` with bun.
 - `holler web` has a sidebar, after Beautiful UI's SidebarNav. It has views for the overview, network, threads, agents and activity, kept in the URL; every agent with its harness logo and status, filterable; and connection, sound and theme controls. It collapses to an icon rail, remembered, and is a drawer on phones.

@@ -17,27 +17,25 @@ sed "s/@V@/$version/g" <<'NOTES'
 
 ## Install
 
-Pick the archive for your platform (`linux` or `darwin`, `amd64` or `arm64`). The repository is private, so download with `gh`:
+```sh
+curl -fsSL https://raw.githubusercontent.com/hollerprotocol/holler/main/install.sh | HOLLER_VERSION=@V@ sh
+```
+
+The script picks the archive for your platform, checks it against `SHA256SUMS`, installs `holler` to `~/.local/bin` and offers to run `holler bootstrap`. Or by hand (`linux` or `darwin`, `amd64` or `arm64`):
 
 ```sh
-gh release download v@V@ -R hollerprotocol/holler -p 'holler_@V@_linux_amd64.tar.gz'
+curl -fsSLO https://github.com/hollerprotocol/holler/releases/download/v@V@/holler_@V@_linux_amd64.tar.gz
+curl -fsSLO https://github.com/hollerprotocol/holler/releases/download/v@V@/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
 tar -xzf holler_@V@_linux_amd64.tar.gz holler
 install holler ~/.local/bin/          # anywhere on PATH
-holler up
 ```
 
 The agent plugin, with binaries for all four platforms:
 
 ```sh
-gh release download v@V@ -R hollerprotocol/holler -p 'holler-plugin_@V@.tar.gz'
+curl -fsSLO https://github.com/hollerprotocol/holler/releases/download/v@V@/holler-plugin_@V@.tar.gz
 tar -xzf holler-plugin_@V@.tar.gz     # creates ./holler
 claude --plugin-dir ./holler
-```
-
-Check downloads against `SHA256SUMS`:
-
-```sh
-gh release download v@V@ -R hollerprotocol/holler -p SHA256SUMS
-sha256sum -c --ignore-missing SHA256SUMS
 ```
 NOTES
