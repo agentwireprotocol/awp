@@ -29,15 +29,9 @@ sprite$ holler wait --thread thr_cj66nrqv --state done,failed
 curl -fsSL https://raw.githubusercontent.com/hollerprotocol/holler/main/install.sh | sh
 ```
 
-While the repository is private, fetch the script with `gh` instead:
-
-```sh
-gh api -H 'Accept: application/vnd.github.raw' repos/hollerprotocol/holler/contents/install.sh | sh
-```
-
 The script:
 1. Picks the [release](https://github.com/hollerprotocol/holler/releases) build for your OS and CPU: Linux or macOS, amd64 or arm64.
-2. Downloads it with `gh`, or with `curl` and `GITHUB_TOKEN`.
+2. Downloads it with `curl`.
 3. Checks it against `SHA256SUMS` and installs it to `~/.local/bin`.
 4. Offers to run `holler bootstrap`.
 
@@ -48,9 +42,8 @@ Settings, all optional:
 | `HOLLER_VERSION` | install a specific release instead of the latest |
 | `HOLLER_INSTALL_DIR` | install somewhere other than `~/.local/bin` |
 | `HOLLER_BOOTSTRAP` | `ask` (default), `all` or `none` |
-| `GITHUB_TOKEN` | download from a private repository without `gh` |
 
-Or build from source with Go 1.27 or later, the version tailcat requires. While the repository is private, set `GOPRIVATE=github.com/hollerprotocol`:
+Or build from source with Go 1.27 or later, the version tailcat requires:
 
 ```sh
 go install github.com/hollerprotocol/holler/cmd/holler@latest
@@ -98,8 +91,8 @@ plugin/holler/
 ```
 
 ```sh
-gh release download v0.1.0 -R hollerprotocol/holler -p 'holler-plugin_0.1.0.tar.gz'
-tar -xzf holler-plugin_0.1.0.tar.gz          # creates ./holler, binaries included
+curl -fsSLO https://github.com/hollerprotocol/holler/releases/download/v0.2.0/holler-plugin_0.2.0.tar.gz
+tar -xzf holler-plugin_0.2.0.tar.gz          # creates ./holler, binaries included
 claude --plugin-dir ./holler
 
 make plugin && claude --plugin-dir ./plugin/holler    # or from a checkout

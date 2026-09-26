@@ -26,6 +26,7 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 ### Changed
 
+- `install.sh` downloads with plain `curl` now that the repository is public. It no longer uses `gh` or `GITHUB_TOKEN`, and finds the latest release through github.com's `/releases/latest` redirect rather than the rate-limited API.
 - Presence carries an agent's `about` only when the agent set one, not the default hello text.
 
 ### Fixed

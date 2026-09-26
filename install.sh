@@ -4,21 +4,14 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/hollerprotocol/holler/main/install.sh | sh
 #
-# While the repository is private, fetch the script with gh instead:
-#
-#   gh api -H 'Accept: application/vnd.github.raw' repos/hollerprotocol/holler/contents/install.sh | sh
-#
 # Settings (environment variables):
 #   HOLLER_VERSION=0.2.0            install this release (default: the latest)
 #   HOLLER_INSTALL_DIR=~/bin        where the binary goes (default: ~/.local/bin)
 #   HOLLER_BOOTSTRAP=ask|all|none   set up agent harnesses afterwards (default: ask
 #                                   when there is a terminal, otherwise print how)
-#   GITHUB_TOKEN=...                used for a private repository when gh is not
-#                                   installed or not logged in
 set -eu
 
 REPO=hollerprotocol/holler
-API=https://api.github.com/repos/$REPO
 
 say() { printf '%s\n' "$*"; }
 fail() { printf 'holler install: %s\n' "$*" >&2; exit 1; }
@@ -37,6 +30,7 @@ case $(uname -m) in
   *) fail "unsupported CPU $(uname -m): holler builds for amd64 and arm64" ;;
 esac
 dir=${HOLLER_INSTALL_DIR:-$HOME/.local/bin}
+have curl || fail "curl is required"
 have tar || fail "tar is required"
 if have sha256sum; then
   sha256() { sha256sum "$1" | cut -d' ' -f1; }
@@ -46,32 +40,17 @@ else
   fail "sha256sum or shasum is required"
 fi
 
-# gh when it is installed and logged in (works for a private repository),
-# otherwise curl, with GITHUB_TOKEN if one is set.
-use_gh=
-if have gh && gh auth status >/dev/null 2>&1; then
-  use_gh=1
-elif ! have curl; then
-  fail "curl (or a logged-in gh) is required"
-fi
-
-api_get() { # api_get PATH: GET from the GitHub API, with the token if there is one
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' "$API$1"
-  else
-    curl -fsSL -H 'Accept: application/vnd.github+json' "$API$1"
-  fi
-}
-
 # --- which release ---
 
 if [ -n "${HOLLER_VERSION:-}" ]; then
   tag=v${HOLLER_VERSION#v}
-elif [ -n "$use_gh" ]; then
-  tag=$(gh release view -R "$REPO" --json tagName -q .tagName) || fail "could not find the latest release"
 else
-  tag=$(api_get /releases/latest | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
-  [ -n "$tag" ] || fail "could not find the latest release (for a private repository, log in with gh or set GITHUB_TOKEN)"
+  # github.com redirects /releases/latest to the latest tag's page. Unlike
+  # the API, it has no rate limit.
+  latest=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest") ||
+    fail "could not find the latest release"
+  tag=${latest##*/}
+  case $tag in v*) ;; *) fail "could not find the latest release" ;; esac
 fi
 version=${tag#v}
 archive=holler_${version}_${os}_${arch}.tar.gz
@@ -81,29 +60,9 @@ archive=holler_${version}_${os}_${arch}.tar.gz
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-# asset_url NAME: the API URL of a release asset, read from release JSON on stdin.
-asset_url() {
-  tr ',' '\n' | awk -v name="$1" '
-    /"url": *"https:\/\/api\.github\.com\/repos\/[^"]*\/releases\/assets\/[0-9]+"/ {
-      match($0, /https:[^"]*/); url = substr($0, RSTART, RLENGTH)
-    }
-    /"name":/ && index($0, "\"" name "\"") { print url; exit }'
-}
-
 fetch() { # fetch NAME: download a release asset into $tmp
-  if [ -n "$use_gh" ]; then
-    gh release download "$tag" -R "$REPO" -p "$1" -D "$tmp" --clobber && return
+  curl -fsSL -o "$tmp/$1" "https://github.com/$REPO/releases/download/$tag/$1" ||
     fail "could not download $1 from $tag"
-  fi
-  if curl -fsSL -o "$tmp/$1" "https://github.com/$REPO/releases/download/$tag/$1" 2>/dev/null; then
-    return
-  fi
-  [ -n "${GITHUB_TOKEN:-}" ] || fail "could not download $1 (for a private repository, log in with gh or set GITHUB_TOKEN)"
-  [ -n "${release_json:-}" ] || release_json=$(api_get "/releases/tags/$tag") || fail "release $tag not found"
-  url=$(printf '%s' "$release_json" | asset_url "$1")
-  [ -n "$url" ] || fail "release $tag has no $1"
-  curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/octet-stream' -o "$tmp/$1" "$url" ||
-    fail "could not download $1"
 }
 
 say "Installing holler $version for $os/$arch"
