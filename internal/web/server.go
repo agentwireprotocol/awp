@@ -7,8 +7,7 @@
 // one picture, and keeps one activity log: first-hand events from the
 // daemon, plus what the other agents did as their presence changed.
 // Conversations stay private: only threads this host is part of can be
-// read. Like holler watch, the server never marks anything read and never
-// starts a daemon.
+// read. The server never marks anything read and never starts a daemon.
 package web
 
 import (

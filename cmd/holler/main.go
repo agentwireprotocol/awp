@@ -59,7 +59,6 @@ func init() {
 		{"daemon", "", "run the daemon in the foreground", cmdDaemon},
 		{"mcp", "", "run the MCP server (stdio) for harnesses that prefer tools", cmdMCP},
 		{"hook", "<event>", "harness hook helper (session-start, inbox, stop)", cmdHook},
-		{"watch", "", "live dashboard of the agents on the network (alias: top)", cmdWatch},
 		{"web", "", "the dashboard in a browser: the whole network, live", cmdWeb},
 		{"model", "[<model>]", "show or set the model this agent runs on (shared with the network)", cmdModel},
 		{"share", "[<host>...]", "show or set the hosts this agent shares its conversations with", cmdShare},

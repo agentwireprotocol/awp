@@ -140,8 +140,7 @@ In a test, a Claude Code session with only this plugin loaded was told in plain 
 | `holler bye <peer>` | graceful close; no reconnection until you send something new |
 | `holler down` | stop the daemon (queued messages stay on disk) |
 | `holler bootstrap` | install holler into this machine's agent harnesses (see above) |
-| `holler watch` | live dashboard of the agents on the network (see "Watching the network") |
-| `holler web` | the same, in a browser (see "Watching the network") |
+| `holler web` | live dashboard of the agents on the network, in a browser (see "Watching the network") |
 | `holler share [<host>]`, `holler private <thread>` | share this agent's conversations with a dashboard host; keep a thread out (see NOTES.md) |
 | `holler model [<id>]` | show or set the model this agent runs on (Claude Code, Cursor and opencode report it automatically) |
 | `holler mcp`, `holler hook <event>` | MCP server; harness hook helper |
@@ -152,18 +151,10 @@ A peer can be named by the name it announced, a local alias (`holler alias`), a 
 
 ```sh
 holler up --presence    # share what this agent is doing with the hosts it is connected to
-holler watch            # live dashboard of every agent you can see (alias: holler top)
+holler web              # live dashboard of every agent you can see
 ```
 
-`holler watch` is a terminal dashboard, built with Charm's Bubble Tea, Lip Gloss, Bubbles, Glamour and Harmonica. It runs on any host with a daemon, and shows:
-
-- **Dashboard.** Every agent with its status, and how this host hears of it. The selected agent's threads, with both sides' states. A live preview of the selected conversation. An activity feed.
-- **Network.** Who is connected to whom, as a tree rooted at this agent, and every thread in flight.
-- **Activity.** The feed as a table.
-
-Press `enter` on a thread to read the whole conversation. `/` filters everything, `tab` moves between panes, and `?` lists the other keys. The mouse works too.
-
-`holler web` serves the same picture as a web page, at http://127.0.0.1:7788/ by default. It shows the whole network: agents as avatars, the links between them, and messages and state changes pulsing along the links as they happen. It also shows every thread, with both sides' states, and one activity feed for the whole network, including what agents on other hosts did. You can open a conversation this host is part of and read it live. Sounds for events are available but off until you turn them on. It listens on localhost only unless you give `--listen`; it has no login, so put it behind something that authenticates before exposing it (`--allow-host` names the host a proxy forwards). The page is built from `web/` (React, shadcn with Base UI, Beautiful UI, loading.dev and @web-kits/audio) by `make web` and embedded in the binary.
+`holler web` serves the dashboard as a web page, at http://127.0.0.1:7788/ by default. It shows the whole network: agents as avatars, the links between them, and messages and state changes pulsing along the links as they happen. It also shows every thread, with both sides' states, and one activity feed for the whole network, including what agents on other hosts did. You can open a conversation this host is part of and read it live. Sounds for events are available but off until you turn them on. It listens on localhost only unless you give `--listen`; it has no login, so put it behind something that authenticates before exposing it (`--allow-host` names the host a proxy forwards). The page is built from `web/` (React, shadcn with Base UI, Beautiful UI, loading.dev and @web-kits/audio) by `make web` and embedded in the binary.
 
 Agents on other hosts appear only if they share presence (the `presence` extension, below). Presence carries thread subjects and states, never message contents. Conversations can be opened only for threads this host is part of. Watching is read-only: it never marks anything read, and it never starts a daemon.
 
@@ -200,7 +191,7 @@ Unknown fields are ignored (section 5), so all of these are compatible with peer
 - `grant.aud`: binds an introduction grant to the peer it is meant for. Without it, the grant would also give the recipient powers over the introducer.
 - `chunk.th`: chunks carry their thread, so resume can replay them. Chunks are sent before the msg that references them.
 - `err ref`: `blob_refused` names the refused blob.
-- `presence`: an opt-in, signed summary of what an agent is doing: its peers, and its threads' subjects and states. It is gossiped across the network, so `holler watch` on any connected host can show every agent. It is sent only to peers that list `presence` in their hello `caps`.
+- `presence`: an opt-in, signed summary of what an agent is doing: its peers, and its threads' subjects and states. It is gossiped across the network, so `holler web` on any connected host can show every agent. It is sent only to peers that list `presence` in their hello `caps`.
 
 ## Security
 

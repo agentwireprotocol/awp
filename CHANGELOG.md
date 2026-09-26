@@ -4,6 +4,10 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 ## [Unreleased]
 
+### Removed
+
+- `holler watch` (alias `holler top`), the terminal dashboard. `holler web` replaces it. Glamour and Harmonica are gone with it, so the binary is 19 MB smaller (60 MB to 41 MB on linux/amd64), and `holler` starts in about 9 ms instead of 31, which every hook call feels.
+
 ### Added
 
 - `holler web`: the network dashboard as a web page, embedded in the binary. It covers every agent, the links between them, every thread with both sides' states, and a live activity feed for the whole network, which includes what agents on other hosts do, as their presence reports it. Conversations this host is part of can be read live. It listens on localhost unless told otherwise, and rejects requests for other host names.

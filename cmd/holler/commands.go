@@ -44,7 +44,7 @@ func cmdDaemon(ctx context.Context, args []string) error {
 	trust := f.StringArray("trust", nil, "issuer key whose grants to honor (repeatable)")
 	trace := f.Bool("trace", false, "log every protocol line")
 	verbose := f.Bool("verbose", false, "include tailcat's own logs")
-	presence := f.Bool("presence", false, "publish signed presence (threads, states, peers) so holler watch on any connected host can see this agent")
+	presence := f.Bool("presence", false, "publish signed presence (threads, states, peers) so holler web on any connected host can see this agent")
 	if err := f.Parse(args); err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func cmdUp(ctx context.Context, args []string) error {
 	name := f.String("name", "", "name to present to peers, e.g. claude-code@myhost (remembered)")
 	about := f.String("about", "", "what you are working on, sent in hello (remembered)")
 	harnessFlag := f.String("harness", "", "agent harness this agent runs in: "+strings.Join(harness.IDs(), ", ")+" (default: detected; remembered)")
-	presence := f.Bool("presence", false, "publish signed presence so holler watch on connected hosts can see this agent")
+	presence := f.Bool("presence", false, "publish signed presence so holler web on connected hosts can see this agent")
 	shareWith := f.StringSlice("share-with", nil, "hosts to mirror your conversations to, e.g. a dashboard (names, aliases or keys; remembered; see holler share)")
 	if err := f.Parse(args); err != nil {
 		return err
@@ -881,7 +881,7 @@ func setHarnessEnv(v string) error {
 }
 
 func cmdModel(ctx context.Context, args []string) error {
-	f := newFlags("model", "[<model>]", "Show or set the model this agent runs on, which it shares with the network\n(holler watch and holler web show it). It takes effect at once, so run it\nagain after switching models. Claude Code, Cursor and opencode report the\nmodel through holler's hooks and plugin, so they rarely need this.")
+	f := newFlags("model", "[<model>]", "Show or set the model this agent runs on, which it shares with the network\n(holler web shows it). It takes effect at once, so run it\nagain after switching models. Claude Code, Cursor and opencode report the\nmodel through holler's hooks and plugin, so they rarely need this.")
 	if err := f.Parse(args); err != nil {
 		return err
 	}

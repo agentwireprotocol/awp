@@ -75,7 +75,7 @@ Each item gives the issue, what the reference does, and a proposed change.
 
 ## Presence gossip (extension)
 
-`holler watch` shows every agent on the network, not only this host's peers. Draft 1 gives a host no way to learn about agents beyond its own peers, so the reference adds one message type, `presence`:
+`holler web` shows every agent on the network, not only this host's peers. Draft 1 gives a host no way to learn about agents beyond its own peers, so the reference adds one message type, `presence`:
 
 ```
 {"t":"presence","id":"01…","ts":"…","hops":1,"doc":{"origin":"ed25519:…","name":"codex@builder","seq":1790352652876,"ts":"…",
