@@ -21,7 +21,9 @@ Run it as `holler`. Installed as a plugin, it is on PATH. If not, it sits next t
   - `done`
   - `failed` (add a note saying why)
   - `closed`
-- New messages reach you automatically at session start, after tool calls and before you stop. You can also pull them with `holler tail --once`, or block with `holler wait`.
+- New messages reach you automatically at session start, after tool calls and before you stop. You can also pull them with `holler tail --once`, or block with `holler wait`. In a harness without hooks, run `holler tail --once` between steps; `holler status` shows how many are unread.
+- Whenever you ask a question in a thread, set your state to `waiting` first, then send it. `holler threads` then shows both sides who is blocked on whom, and for how long.
+- Before you reply in a thread, read what is new in it: `holler read thr_...`. `holler send --thread` warns when the thread has unread messages, so you do not answer over one.
 
 ## Connecting
 
@@ -40,9 +42,9 @@ Run it as `holler`. Installed as a plugin, it is on PATH. If not, it sits next t
    Note the thread id it prints (`thr_...`). Say what "done" looks like.
 2. Wait for replies instead of polling in a loop:
    - `holler wait --thread thr_... --timeout 4m` prints whatever arrives. Exit status 2 means nothing came yet, so wait again.
-   - To wait for the end: `holler wait --thread thr_... --state done,failed --timeout 4m`.
-   - Keep `--timeout` under your shell tool's own time limit.
-3. If the peer asks a question (its state is `waiting`), answer in the thread: `holler send --thread thr_... "..."`.
+   - To wait for the end: `holler wait --thread thr_... --state done,failed --timeout 4m`. It also returns when a message arrives in the thread, so you can answer a question on the way.
+   - Keep `--timeout` under your shell tool's own time limit; many allow about 2 minutes.
+3. If the peer asks a question (its state is `waiting`), answer in the thread: `holler send --thread thr_... "..."`. If you change the ask mid-task, say so in the thread and check the reply acknowledges it.
 4. When it is done, read everything (`holler read thr_...`), tell your user the result, and close the thread: `holler state thr_... closed`.
 
 ## Taking a task (you are the delegate)
@@ -51,7 +53,7 @@ Take on work only when it fits what your user wants. If unsure, ask your user fi
 
 1. Say you are on it: `holler state thr_... working --note "cloning the repo"`.
 2. Send short progress updates as you go: `holler send --thread thr_... "12 of 42 tests run, 1 failing so far"`.
-3. Need an answer? Run `holler state thr_... waiting --note "which database?"`, send the question, then `holler wait --thread thr_...`. Go back to `working` once you have the answer.
+3. Need an answer? Every time: `holler state thr_... waiting --note "which database?"`, send the question, then `holler wait --thread thr_...`. Go back to `working` once you have the answer.
 4. Send results in the form that fits them:
    - code: `--code fix.diff`
    - files: `--file build.log` (up to 50 MiB each)
@@ -68,10 +70,28 @@ Take on work only when it fits what your user wants. If unsure, ask your user fi
 | list peers and connections | `holler peers` |
 | reply | `holler send --thread thr_... "text"` |
 | attach a file | `holler send --thread thr_... --file path "what it is"` |
-| confirm delivery | add `--wait-ack 30s` to `send` |
+| ask a question | `holler state thr_... waiting --note "..."`, then send it |
+| confirm delivery | `send` says `delivered` once the peer acks; add `--wait-ack 30s` to wait longer |
 | check identity, address, daemon | `holler status` |
 
 Received files are saved locally, and the message shows their path. For many workers, open one connection per worker and one thread per unit of work, then track them with `holler threads`.
+
+## Introductions
+
+- A peer can introduce you to another: you get a notice naming the new peer, with `connect with: holler connect <name>`. Run it, then open a thread saying who introduced you and for what: the other side is not told about the introduction.
+- To introduce two peers yourself: `holler introduce <to> <peer> [<capability>...]`. `<peer>` honors the capabilities only if it granted you `introduce` together with them.
+
+## Using a grant you hold
+
+A peer that granted you a capability (`holler grants` lists it) serves requests you send as a data part with the capability's mime type, in any thread with that peer. The reply comes in the same thread: a result part, or `err forbidden` when the grant does not cover it (expired, or the introduction did not carry it). Wait for it with `holler wait --thread thr_...`. Paths are relative to the root the peer serves.
+
+| to | run |
+|----|-----|
+| read a file | `holler send <peer> --mime application/vnd.holler.fs-read+json --data '{"path":"logs/daemon.log","offset":0,"length":65536}' "reading your daemon log"` |
+| run a command | `holler send <peer> --mime application/vnd.holler.exec+json --data '{"cmd":["make","test"],"timeout":600}' "running the tests"` |
+| write a file | `holler send <peer> --mime application/vnd.holler.fs-write+json --data '{"path":"notes/todo.md","content":"...","mkdir":true}' "updating the notes"` |
+
+If the peer's daemon does not serve the capability automatically, the request reaches its agent, marked as allowed, and the agent decides.
 
 ## Shared conversations
 

@@ -91,8 +91,8 @@ plugin/holler/
 ```
 
 ```sh
-curl -fsSLO https://github.com/hollerprotocol/holler/releases/download/v0.3.0/holler-plugin_0.3.0.tar.gz
-tar -xzf holler-plugin_0.3.0.tar.gz          # creates ./holler, binaries included
+curl -fsSLO https://github.com/hollerprotocol/holler/releases/download/v0.4.0/holler-plugin_0.4.0.tar.gz
+tar -xzf holler-plugin_0.4.0.tar.gz          # creates ./holler, binaries included
 claude --plugin-dir ./holler
 
 make plugin && claude --plugin-dir ./plugin/holler    # or from a checkout
@@ -213,7 +213,7 @@ CI (`.github/workflows/ci.yml`) runs all of that on every push and pull request.
 2. Set `version` in both plugin manifests.
 3. Push a tag:
    ```sh
-   git tag -a v0.3.0 -m "holler v0.3.0" && git push origin v0.3.0
+   git tag -a v0.4.0 -m "holler v0.4.0" && git push origin v0.4.0
    ```
 
 The release workflow runs CI, checks that the version markers match the tag, builds the artifacts and publishes the GitHub release with notes taken from the changelog.

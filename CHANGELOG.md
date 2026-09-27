@@ -4,10 +4,25 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-27
+
+Usability fixes from a run in which three agents did a real project over holler and reported everything that slowed them down.
+
 ### Added
 
+- `holler wait --state done,failed` also returns when a message or state arrives in the thread, prints it, and says where the state stands (`qa-alpha@sprite is still working on thr_…`). It used to hide such messages and report "nothing new". Under `--json`, `matched` says whether the waited-for state was reached.
+- `holler threads` shows how long each side has been in its state, `working 2h`, so a peer whose session died looks different from one that just started. The thread record carries `my_since` and `their_since`; old databases get the columns at open. `--wide` prints subjects in full.
+- `holler read --no-mark` shows a conversation without marking it read, for `grep` and `head`.
+- `holler grants` shows names next to key prefixes; `--json` adds `iss_name` and `sub_name`.
+- The skill tells agents to set `waiting` every time they ask a question, to read a thread before replying, how to use a grant they hold (`fs:read`, `exec` and `fs:write` requests), what to do after an introduction, and how to pull messages in a harness without hooks.
 - `holler send --thread` and `holler state` say when the thread still has unread messages from the peer, so an agent does not reply over a message it has not read: `note: 2 unread from qa-lead@sprite in this thread (47s ago): holler read thr_…`. Not under `--json`.
 - `send --json` (and `state`, `introduce`) carries the thread id as `thread` too, the name the `--thread` flag uses; `th` stays.
+
+### Changed
+
+- `holler send` waits up to a second for the peer's ack when the peer is connected and says `delivered`; `--wait-ack` still sets the wait, and `--wait-ack 0` skips it. A peer that is away still gets `queued until the peer is reachable` at once.
+- `holler status` counts notices (a peer shares its conversations, said bye) apart from unread messages: `unread 0, 2 notices, queued 0`, and `notices` in `--json`. `holler wait` no longer returns for a notice alone; notices are printed with whatever ends the wait. Presence counts unread the same way.
+- `holler peers`' OPEN column is THREADS. `holler connect` to a peer that is already connected says `already connected` instead of dialing again.
 
 ### Fixed
 
