@@ -460,6 +460,55 @@ func TestMirroredThread(t *testing.T) {
 	}
 }
 
+// Both parties of a thread share with this host: every line arrives twice,
+// once from each sharer. The feed shows it once, and the thread can be read
+// through either sharer, with the subject and that sharer's state first.
+func TestBothPartiesShare(t *testing.T) {
+	fd, hs := startServer(t)
+	raw, _ := json.Marshal(wire.Msg{Envelope: wire.Envelope{T: wire.TMsg, ID: "01TWICE", Th: "thr_build"}, Parts: []wire.Part{{K: wire.PartText, Text: "artifacts are up"}}})
+	line := func(sharer, of string) api.Event {
+		return api.Event{At: time.Now(), Dir: "mirror", Type: wire.TMsg, Peer: sharer, Th: "thr_build", ID: "01TWICE", Msg: raw,
+			Meta: map[string]any{"of": of, "from": builderKey, "subject": "Build it"}}
+	}
+	fd.publish(line(workerKey, builderKey))
+	count := func() int {
+		var act struct{ Items []Activity }
+		getJSON(t, hs.URL+"/api/activity", &act)
+		n := 0
+		for _, a := range act.Items {
+			if a.Th == "thr_build" && a.Kind == wire.TMsg {
+				n++
+			}
+		}
+		return n
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for count() < 1 {
+		if time.Now().After(deadline) {
+			t.Fatal("mirrored line never reached the feed")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	fd.publish(line(builderKey, workerKey))
+	time.Sleep(200 * time.Millisecond)
+	if n := count(); n != 1 {
+		t.Errorf("the feed shows the line %d times, want once", n)
+	}
+
+	// The host recorded the worker as the sharer; asking through the
+	// builder still finds the thread.
+	var c Conversation
+	if code := getJSON(t, hs.URL+"/api/thread?peer="+builderKey+"&th=thr_build", &c); code != 200 {
+		t.Fatalf("thread through the other sharer: %d", code)
+	}
+	if c.Subject != "Build it" || len(c.Messages) != 1 {
+		t.Errorf("conversation through the other sharer: %+v", c)
+	}
+	if c.AState != wire.StateWorking || c.BState != wire.StateWaiting {
+		t.Errorf("states from the builder's side: %q %q", c.AState, c.BState)
+	}
+}
+
 func TestActivityFromMirror(t *testing.T) {
 	raw, _ := json.Marshal(wire.Msg{Envelope: wire.Envelope{T: wire.TMsg, ID: "01X", Th: "thr_build"}, Parts: []wire.Part{{K: wire.PartText, Text: "hi"}}})
 	ev := api.Event{Dir: "mirror", Type: wire.TMsg, Peer: workerKey, Th: "thr_build", Msg: raw, Meta: map[string]any{"of": builderKey, "from": workerKey, "subject": "Build it"}}

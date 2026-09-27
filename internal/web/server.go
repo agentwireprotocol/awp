@@ -46,9 +46,12 @@ func Assets() fs.FS {
 }
 
 const (
-	pollEvery   = 1500 * time.Millisecond
-	keepItems   = 2000
-	historySeed = 300
+	pollEvery = 1500 * time.Millisecond
+	keepItems = 2000
+	// keepMirrorIDs bounds the mirrored line ids remembered for
+	// deduplication (seenMirrorLocked).
+	keepMirrorIDs = 4096
+	historySeed   = 300
 )
 
 // Server is the dashboard's backend for one daemon.
@@ -65,6 +68,11 @@ type Server struct {
 	subs   map[chan sseMsg]struct{}
 	nudge  chan struct{}
 	seeded bool
+	// Mirrored line ids already in the feed, in arrival order. When both
+	// parties of a thread share with this host, every line arrives twice,
+	// once from each sharer, and the feed shows it once.
+	mirrored    map[string]struct{}
+	mirrorOrder []string
 }
 
 type sseMsg struct {
@@ -167,6 +175,9 @@ func (s *Server) follow(ctx context.Context) {
 			if err := s.C.Call(ctx, "read", api.ReadParams{Limit: historySeed, Mirrors: true}, &res); err == nil {
 				s.mu.Lock()
 				for _, ev := range res.Events {
+					if s.seenMirrorLocked(ev) {
+						continue
+					}
 					if a, ok := activityFromEvent(ev, self); ok {
 						s.addLocked(a)
 					}
@@ -208,6 +219,10 @@ func (s *Server) selfKey(ctx context.Context) string {
 
 func (s *Server) onEvent(ev api.Event, self string) {
 	s.mu.Lock()
+	if s.seenMirrorLocked(ev) {
+		s.mu.Unlock()
+		return
+	}
 	if a, ok := activityFromEvent(ev, self); ok {
 		s.addLocked(a)
 	}
@@ -221,6 +236,31 @@ func (s *Server) onEvent(ev api.Event, self string) {
 	case s.nudge <- struct{}{}:
 	default:
 	}
+}
+
+// seenMirrorLocked reports whether a mirrored line is already in the feed,
+// and remembers it if not. Other events are never duplicates. The caller
+// holds mu.
+func (s *Server) seenMirrorLocked(ev api.Event) bool {
+	if ev.Dir != "mirror" || ev.ID == "" {
+		return false
+	}
+	if _, ok := s.mirrored[ev.ID]; ok {
+		return true
+	}
+	if s.mirrored == nil {
+		s.mirrored = map[string]struct{}{}
+	}
+	s.mirrored[ev.ID] = struct{}{}
+	s.mirrorOrder = append(s.mirrorOrder, ev.ID)
+	if len(s.mirrorOrder) > keepMirrorIDs {
+		drop := len(s.mirrorOrder) - keepMirrorIDs
+		for _, id := range s.mirrorOrder[:drop] {
+			delete(s.mirrored, id)
+		}
+		s.mirrorOrder = append([]string(nil), s.mirrorOrder[drop:]...)
+	}
+	return false
 }
 
 func (s *Server) addLocked(a Activity) {
@@ -349,10 +389,11 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 	if t := res.Thread; t != nil {
 		c.Subject, c.AState, c.BState = t.Subject, t.MyState, t.TheirState
 	} else {
-		// Mirrored: the sharer's state first, as the page expects the
-		// host's side first.
+		// Mirrored: peer may be either party, since the host records only
+		// the first sharer of a thread both parties share. Its state comes
+		// first, as the page expects the host's side first.
 		for _, t := range st.Threads {
-			if t.Th == th && t.SharedBy == peer {
+			if t.Th == th && (t.SharedBy == peer || t.A == peer || t.B == peer) {
 				c.Subject, c.AState, c.BState = t.Subject, t.AState, t.BState
 				if t.B == peer {
 					c.AState, c.BState = t.BState, t.AState
