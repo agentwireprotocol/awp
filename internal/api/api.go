@@ -128,9 +128,11 @@ type ConnectParams struct {
 	TimeoutMS int    `json:"timeout_ms,omitempty"`
 }
 
-// ConnectResult for "connect".
+// ConnectResult for "connect". Existing says the connection was already
+// up before the call.
 type ConnectResult struct {
-	Peer PeerView `json:"peer"`
+	Peer     PeerView `json:"peer"`
+	Existing bool     `json:"existing,omitempty"`
 }
 
 // SendParams for "send". Peer may be a key, name, alias, key prefix or an

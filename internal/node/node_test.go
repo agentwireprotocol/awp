@@ -734,3 +734,66 @@ func TestHarnessPrecedence(t *testing.T) {
 		t.Errorf("a detected harness was remembered: %q", n.Harness())
 	}
 }
+
+// TestStateSince checks that each side's since timestamp moves when its
+// state or note changes, and only then, at both ends of the thread.
+func TestStateSince(t *testing.T) {
+	a, b := testNode(t, "a"), testNode(t, "b")
+	connect(t, a, b)
+	res, err := a.Send(SendRequest{Peer: b.Key(), Subject: "Since", Parts: text(t, "hi")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, b, "msg at b", func() bool { return len(received(t, b, a.Key(), "msg")) == 1 })
+	thread := func(n *Node, peer string) *store.Thread {
+		t.Helper()
+		ts, err := n.Store().Threads(peer, res.Th)
+		if err != nil || len(ts) != 1 {
+			t.Fatalf("thread at %s: %v %v", n.Name(), ts, err)
+		}
+		return ts[0]
+	}
+	states := func(n int) func() bool {
+		return func() bool { return len(received(t, a, b.Key(), "state")) == n }
+	}
+	// A new thread is open on both sides since it was created.
+	if th := thread(b, a.Key()); !th.MySince.Equal(th.Created) || !th.TheirSince.Equal(th.Created) {
+		t.Fatalf("new thread at b: %+v", th)
+	}
+	time.Sleep(10 * time.Millisecond) // timestamps are milliseconds
+	if _, err := b.SetState(a.Key(), res.Th, wire.StateWorking, "cloning"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, a, "state at a", states(1))
+	tb, ta := thread(b, a.Key()), thread(a, b.Key())
+	if !tb.MySince.After(tb.Created) || !tb.TheirSince.Equal(tb.Created) {
+		t.Fatalf("after state at b: %+v", tb)
+	}
+	if ta.TheirState != wire.StateWorking || !ta.TheirSince.After(ta.Created) || !ta.MySince.Equal(ta.Created) {
+		t.Fatalf("after state at a: %+v", ta)
+	}
+	// Saying the same again does not restart the clock on either side.
+	time.Sleep(10 * time.Millisecond)
+	if _, err := b.SetState(a.Key(), res.Th, wire.StateWorking, "cloning"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, a, "repeat at a", states(2))
+	if th := thread(b, a.Key()); !th.MySince.Equal(tb.MySince) {
+		t.Fatalf("repeat at b: %+v", th)
+	}
+	if th := thread(a, b.Key()); !th.TheirSince.Equal(ta.TheirSince) {
+		t.Fatalf("repeat at a: %+v", th)
+	}
+	// A new note does.
+	time.Sleep(10 * time.Millisecond)
+	if _, err := b.SetState(a.Key(), res.Th, wire.StateWorking, "testing"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, a, "new note at a", states(3))
+	if th := thread(b, a.Key()); !th.MySince.After(tb.MySince) {
+		t.Fatalf("new note at b: %+v", th)
+	}
+	if th := thread(a, b.Key()); th.TheirNote != "testing" || !th.TheirSince.After(ta.TheirSince) {
+		t.Fatalf("new note at a: %+v", th)
+	}
+}

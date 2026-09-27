@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hollerprotocol/holler/internal/api"
+	"github.com/hollerprotocol/holler/internal/control"
 	"github.com/hollerprotocol/holler/internal/daemon"
 	"github.com/hollerprotocol/holler/internal/harness"
 	"github.com/hollerprotocol/holler/internal/mcp"
@@ -308,6 +309,10 @@ func cmdConnect(ctx context.Context, args []string) error {
 		return printJSON(res.Peer)
 	}
 	p := res.Peer
+	if res.Existing {
+		fmt.Printf("already connected to %s (%s)\n", p.Label(), p.Short)
+		return nil
+	}
 	fmt.Printf("connected to %s (%s) via %s\n", p.Label(), p.Key, p.Via)
 	if p.About != "" {
 		fmt.Printf("  about: %s\n", p.About)
@@ -594,9 +599,10 @@ func cmdWait(ctx context.Context, args []string) error {
 }
 
 func cmdRead(ctx context.Context, args []string) error {
-	f := newFlags("read", "[<thread>]", "Show a conversation, both directions, oldest first: one thread, one peer\n(--peer), or everything recent. Marks what it shows as read.")
+	f := newFlags("read", "[<thread>]", "Show a conversation, both directions, oldest first: one thread, one peer\n(--peer), or everything recent. Marks what it shows as read, unless --no-mark\nis given: use that when piping through grep or head, so that a message the\nfilter drops stays unread for wait and tail.")
 	peer := f.StringP("peer", "p", "", "only this peer")
 	last := f.IntP("last", "n", 50, "how many records")
+	noMark := f.Bool("no-mark", false, "leave what is shown unread")
 	if err := f.Parse(args); err != nil {
 		return err
 	}
@@ -606,7 +612,7 @@ func cmdRead(ctx context.Context, args []string) error {
 	}
 	th := f.Arg(0)
 	var res api.ReadResult
-	if err := c.Call(ctx, "read", api.ReadParams{Peer: *peer, Th: th, Limit: *last, Mark: true}, &res); err != nil {
+	if err := c.Call(ctx, "read", api.ReadParams{Peer: *peer, Th: th, Limit: *last, Mark: !*noMark}, &res); err != nil {
 		return err
 	}
 	if *f.json {
@@ -633,10 +639,27 @@ func stateNote(state, note string) string {
 	return state
 }
 
+// peerNames maps keys to labels for every known peer, and to our own name
+// for our key.
+func peerNames(ctx context.Context, c *control.Client) map[string]string {
+	names := map[string]string{}
+	var peers []api.PeerView
+	c.Call(ctx, "peers", nil, &peers)
+	for _, p := range peers {
+		names[p.Key] = p.Label()
+	}
+	var st api.Status
+	if c.Call(ctx, "status", nil, &st) == nil {
+		names[st.Key] = st.Name
+	}
+	return names
+}
+
 func cmdThreads(ctx context.Context, args []string) error {
-	f := newFlags("threads", "", "List threads, most recently active first.")
+	f := newFlags("threads", "", "List threads, most recently active first. YOU and THEM are each side's\nstate and how long it has been in it.")
 	peer := f.StringP("peer", "p", "", "only this peer")
 	open := f.Bool("open", false, "only threads not done, failed or closed")
+	wide := f.Bool("wide", false, "print subjects in full")
 	if err := f.Parse(args); err != nil {
 		return err
 	}
@@ -648,12 +671,7 @@ func cmdThreads(ctx context.Context, args []string) error {
 	if err := c.Call(ctx, "threads", api.PeerParams{Peer: *peer}, &threads); err != nil {
 		return err
 	}
-	var peers []api.PeerView
-	c.Call(ctx, "peers", nil, &peers)
-	names := map[string]string{}
-	for _, p := range peers {
-		names[p.Key] = p.Label()
-	}
+	names := peerNames(ctx, c)
 	var out []*store.Thread
 	for _, t := range threads {
 		if !*open || t.Open() {
@@ -674,7 +692,11 @@ func cmdThreads(ctx context.Context, args []string) error {
 		if name == "" {
 			name = wire.ShortKey(t.Peer)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n", t.Th, name, clip(t.Subject, 48), t.MyState, t.TheirState, t.Unread, ago(t.Updated))
+		subject := t.Subject
+		if !*wide {
+			subject = clip(subject, 48)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%s\n", t.Th, name, subject, stateAge(t.MyState, t.MySince), stateAge(t.TheirState, t.TheirSince), t.Unread, ago(t.Updated))
 	}
 	return tw.Flush()
 }
@@ -705,7 +727,7 @@ func cmdPeers(ctx context.Context, args []string) error {
 
 func printPeers(peers []api.PeerView) {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "PEER\tKEY\tSTATE\tQUEUED\tOPEN\tUNREAD\tGRANTED")
+	fmt.Fprintln(tw, "PEER\tKEY\tSTATE\tQUEUED\tTHREADS\tUNREAD\tGRANTED")
 	for _, p := range peers {
 		state := "offline"
 		switch {
@@ -765,8 +787,13 @@ func cmdGrants(ctx context.Context, args []string) error {
 	if err := c.Call(ctx, "grants", nil, &gs); err != nil {
 		return err
 	}
+	names := peerNames(ctx, c)
 	if *f.json {
-		return printJSON(gs)
+		out := make([]grantView, 0, len(gs))
+		for _, g := range gs {
+			out = append(out, grantView{GrantRow: g, IssName: names[g.Iss], SubName: names[g.Sub]})
+		}
+		return printJSON(out)
 	}
 	if len(gs) == 0 {
 		fmt.Println("no grants")
@@ -779,9 +806,16 @@ func cmdGrants(ctx context.Context, args []string) error {
 		if time.Now().After(g.Exp) {
 			exp += " (expired)"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", g.Hash, g.Role, wire.ShortKey(g.Iss), wire.ShortKey(g.Sub), strings.Join(g.Caps, ","), exp)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", g.Hash, g.Role, nameKey(names, g.Iss), nameKey(names, g.Sub), strings.Join(g.Caps, ","), exp)
 	}
 	return tw.Flush()
+}
+
+// grantView is a grant with the names behind its keys, for --json.
+type grantView struct {
+	*store.GrantRow
+	IssName string `json:"iss_name,omitempty"`
+	SubName string `json:"sub_name,omitempty"`
 }
 
 func cmdRevoke(ctx context.Context, args []string) error {

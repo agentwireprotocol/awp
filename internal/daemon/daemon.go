@@ -407,6 +407,7 @@ func (d *Daemon) view(key string) api.PeerView {
 }
 
 func (d *Daemon) connect(ctx context.Context, p api.ConnectParams) (*api.ConnectResult, error) {
+	start := time.Now()
 	timeout := time.Duration(p.TimeoutMS) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 60 * time.Second
@@ -422,7 +423,7 @@ func (d *Daemon) connect(ctx context.Context, p api.ConnectParams) (*api.Connect
 		}
 		pv := d.view(key)
 		if pv.Connected {
-			return &api.ConnectResult{Peer: pv}, nil
+			return &api.ConnectResult{Peer: pv, Existing: true}, nil
 		}
 		if len(pv.Addrs) == 0 {
 			return nil, fmt.Errorf("no known address for %s", pv.Label())
@@ -430,7 +431,7 @@ func (d *Daemon) connect(ctx context.Context, p api.ConnectParams) (*api.Connect
 		var lastErr error
 		for _, a := range pv.Addrs {
 			if k, err := d.n.Connect(ctx, a.Addr); err == nil && k == key {
-				return &api.ConnectResult{Peer: d.view(k)}, nil
+				return d.connected(k, start), nil
 			} else if err != nil {
 				lastErr = err
 			}
@@ -441,7 +442,17 @@ func (d *Daemon) connect(ctx context.Context, p api.ConnectParams) (*api.Connect
 	if err != nil {
 		return nil, err
 	}
-	return &api.ConnectResult{Peer: d.view(key)}, nil
+	return d.connected(key, start), nil
+}
+
+// connected reports key's connection, noting whether it was already up
+// before start: the node reuses a live connection rather than dialing.
+func (d *Daemon) connected(key string, start time.Time) *api.ConnectResult {
+	res := &api.ConnectResult{Peer: d.view(key)}
+	if ci := d.n.ConnInfo(key); ci != nil && ci.Since.Before(start) {
+		res.Existing = true
+	}
+	return res
 }
 
 // resolve turns a peer argument (key, name, alias, prefix or address) and

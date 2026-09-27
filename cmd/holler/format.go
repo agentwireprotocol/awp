@@ -7,6 +7,7 @@ import (
 
 	"github.com/hollerprotocol/holler/internal/api"
 	"github.com/hollerprotocol/holler/internal/render"
+	"github.com/hollerprotocol/holler/wire"
 )
 
 // printer writes events for people, printing a thread banner whenever the
@@ -37,20 +38,47 @@ func clip(s string, n int) string {
 	return string(r[:n-1]) + "…"
 }
 
+// age is how long ago t was, compactly: 5s, 2m, 3h, 4d.
+func age(t time.Time) string {
+	d := max(time.Since(t), 0)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
 func ago(t time.Time) string {
 	if t.IsZero() {
 		return "-"
 	}
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds ago", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 48*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	if time.Since(t) < 48*time.Hour {
+		return age(t) + " ago"
 	}
 	return t.Local().Format("Jan 2")
+}
+
+// stateAge is a thread side's state and how long it has been in it,
+// "working 2h", or just the state when that is not known.
+func stateAge(state string, since time.Time) string {
+	if since.IsZero() {
+		return state
+	}
+	return state + " " + age(since)
+}
+
+// nameKey is a peer's label with its key prefix, "b@host (XuQyk9ovuN)",
+// or the prefix alone for a key without a name.
+func nameKey(names map[string]string, key string) string {
+	short := wire.ShortKey(key)
+	if name := names[key]; name != "" {
+		return name + " (" + short + ")"
+	}
+	return short
 }
 
 func humanSize(n int64) string { return render.HumanSize(n) }

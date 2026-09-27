@@ -110,8 +110,10 @@ CREATE TABLE IF NOT EXISTS threads (
 	updated     INTEGER NOT NULL,
 	my_state    TEXT NOT NULL DEFAULT 'open',
 	my_note     TEXT NOT NULL DEFAULT '',
+	my_since    INTEGER NOT NULL DEFAULT 0,
 	their_state TEXT NOT NULL DEFAULT 'open',
 	their_note  TEXT NOT NULL DEFAULT '',
+	their_since INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (peer, th)
 );
 
@@ -159,7 +161,65 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("store schema: %w", err)
 	}
+	if err := migrate(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store migration: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+// migrate adds columns that a database from an older version lacks.
+// CREATE TABLE IF NOT EXISTS leaves an existing table as it was, so each
+// addition checks the table's columns first and is safe to run at every
+// open.
+func migrate(db *sql.DB) error {
+	cols, err := columns(db, "threads")
+	if err != nil {
+		return err
+	}
+	// Per-side state timestamps. Existing rows start from the thread's
+	// last update, the closest thing known.
+	for _, col := range []string{"my_since", "their_since"} {
+		if cols[col] {
+			continue
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`ALTER TABLE threads ADD COLUMN ` + col + ` INTEGER NOT NULL DEFAULT 0`); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE threads SET ` + col + ` = updated`); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// columns names a table's columns.
+func columns(db *sql.DB, table string) (map[string]bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return nil, err
+		}
+		cols[name] = true
+	}
+	return cols, rows.Err()
 }
 
 // Close closes the database.
@@ -820,8 +880,10 @@ type Thread struct {
 	Updated    time.Time `json:"updated"`
 	MyState    string    `json:"my_state"`
 	MyNote     string    `json:"my_note,omitempty"`
+	MySince    time.Time `json:"my_since"` // when my state or note last changed
 	TheirState string    `json:"their_state"`
 	TheirNote  string    `json:"their_note,omitempty"`
+	TheirSince time.Time `json:"their_since"`
 	Unread     int       `json:"unread,omitempty"`
 }
 
@@ -835,40 +897,45 @@ func (t *Thread) Open() bool {
 	return !Terminal(t.MyState) && !Terminal(t.TheirState)
 }
 
-// TouchThread creates a thread on first sight, and otherwise bumps its
-// update time and fills in a missing subject.
+// TouchThread creates a thread on first sight (open on both sides since
+// now), and otherwise bumps its update time and fills in a missing subject.
 func TouchThread(q Q, peer, th, subject, origin string, now time.Time) error {
 	if th == "" {
 		return nil
 	}
-	_, err := q.Exec(`INSERT INTO threads (peer, th, subject, origin, created, updated) VALUES (?, ?, ?, ?, ?, ?)
+	_, err := q.Exec(`INSERT INTO threads (peer, th, subject, origin, created, updated, my_since, their_since) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (peer, th) DO UPDATE SET updated = excluded.updated,
 			subject = CASE WHEN threads.subject = '' THEN excluded.subject ELSE threads.subject END`,
-		peer, th, subject, origin, ms(now), ms(now))
+		peer, th, subject, origin, ms(now), ms(now), ms(now), ms(now))
 	return err
 }
 
-// SetThreadState records a state change, ours (mine) or the peer's.
+// SetThreadState records a state change, ours (mine) or the peer's. The
+// side's since timestamp moves only when its state or note differs from
+// what it was, so it says how long the side has been in that state.
 func SetThreadState(q Q, peer, th string, mine bool, state, note string, now time.Time) error {
-	col, noteCol := "their_state", "their_note"
+	side := "their"
 	if mine {
-		col, noteCol = "my_state", "my_note"
+		side = "my"
 	}
-	_, err := q.Exec(`UPDATE threads SET `+col+` = ?, `+noteCol+` = ?, updated = ? WHERE peer = ? AND th = ?`, state, note, ms(now), peer, th)
+	_, err := q.Exec(`UPDATE threads SET `+side+`_since = CASE WHEN `+side+`_state = ? AND `+side+`_note = ? THEN `+side+`_since ELSE ? END,
+		`+side+`_state = ?, `+side+`_note = ?, updated = ? WHERE peer = ? AND th = ?`,
+		state, note, ms(now), state, note, ms(now), peer, th)
 	return err
 }
 
-const threadCols = `t.peer, t.th, t.subject, t.origin, t.created, t.updated, t.my_state, t.my_note, t.their_state, t.their_note,
+const threadCols = `t.peer, t.th, t.subject, t.origin, t.created, t.updated, t.my_state, t.my_note, t.my_since, t.their_state, t.their_note, t.their_since,
 	(SELECT count(*) FROM log l WHERE l.peer = t.peer AND l.th = t.th AND l.dir = 'in' AND l.read = 0)`
 
 func scanThread(sc interface{ Scan(...any) error }) (*Thread, error) {
 	var t Thread
-	var created, updated int64
-	err := sc.Scan(&t.Peer, &t.Th, &t.Subject, &t.Origin, &created, &updated, &t.MyState, &t.MyNote, &t.TheirState, &t.TheirNote, &t.Unread)
+	var created, updated, mySince, theirSince int64
+	err := sc.Scan(&t.Peer, &t.Th, &t.Subject, &t.Origin, &created, &updated, &t.MyState, &t.MyNote, &mySince, &t.TheirState, &t.TheirNote, &theirSince, &t.Unread)
 	if err != nil {
 		return nil, err
 	}
 	t.Created, t.Updated = fromMS(created), fromMS(updated)
+	t.MySince, t.TheirSince = fromMS(mySince), fromMS(theirSince)
 	return &t, nil
 }
 
