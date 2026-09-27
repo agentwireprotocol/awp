@@ -89,8 +89,13 @@ func (n *Node) LocalPresence() (*wire.Presence, error) {
 		})
 	}
 	p.Outbox, _ = n.st.OutboxCount("")
+	// Unread messages, not notices (sys records), as status counts them.
 	unread, _ := n.st.Query(store.Filter{Inbox: true, UnreadOnly: true, Limit: 10000})
-	p.Unread = len(unread)
+	for _, r := range unread {
+		if r.Dir != "sys" {
+			p.Unread++
+		}
+	}
 	return p, nil
 }
 

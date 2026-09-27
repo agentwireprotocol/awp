@@ -180,6 +180,18 @@ func daemonPID(home string) int {
 	return pid
 }
 
+// countsLine is status's line of counts. Notices are mentioned only when
+// there are some.
+func countsLine(unread, notices, queued int) string {
+	switch notices {
+	case 0:
+		return fmt.Sprintf("unread %d, queued %d", unread, queued)
+	case 1:
+		return fmt.Sprintf("unread %d, 1 notice, queued %d", unread, queued)
+	}
+	return fmt.Sprintf("unread %d, %d notices, queued %d", unread, notices, queued)
+}
+
 func cmdStatus(ctx context.Context, args []string) error {
 	f := newFlags("status", "", "Show this peer's identity, addresses and peers. Does not start the daemon.")
 	if err := f.Parse(args); err != nil {
@@ -218,7 +230,7 @@ func cmdStatus(ctx context.Context, args []string) error {
 		fmt.Printf("  serves   %s (to peers holding a grant)\n", strings.Join(st.Serve, ", "))
 	}
 	fmt.Printf("  accept   %s\n", st.Accept)
-	fmt.Printf("  unread %d, queued %d\n", st.Unread, st.Outbox)
+	fmt.Printf("  %s\n", countsLine(st.Unread, st.Notices, st.Outbox))
 	if len(st.Peers) > 0 {
 		fmt.Println()
 		printPeers(st.Peers)
@@ -331,7 +343,7 @@ func cmdSend(ctx context.Context, args []string) error {
 	datas := f.StringArray("data", nil, "attach inline JSON as a data part (repeatable)")
 	mime := f.String("mime", "application/json", "mime type for --data parts")
 	files := f.StringArrayP("file", "f", nil, "attach a file as a blob (repeatable)")
-	waitAck := f.Duration("wait-ack", 0, "wait up to this long for the peer to acknowledge")
+	waitAck := f.Duration("wait-ack", time.Second, "wait up to this long for the peer to acknowledge (0: do not wait); the default applies only when the peer is connected")
 	if err := f.Parse(args); err != nil {
 		return err
 	}
@@ -341,6 +353,12 @@ func cmdSend(ctx context.Context, args []string) error {
 	c, err := f.ensureDaemon()
 	if err != nil {
 		return err
+	}
+	ack := 0 // the daemon's default: a second when the peer is connected
+	if f.Changed("wait-ack") {
+		if ack = int(waitAck.Milliseconds()); ack <= 0 {
+			ack = -1 // do not wait
+		}
 	}
 	pos := f.Args()
 	peer := *to
@@ -391,24 +409,29 @@ func cmdSend(ctx context.Context, args []string) error {
 		unreadNote(ctx, c, peer, *th)
 	}
 	var res api.SendResult
-	err = c.Call(ctx, "send", api.SendParams{Peer: peer, Th: *th, Subject: *subject, Re: *re, Parts: parts, Files: abs, WaitAck: int(waitAck.Milliseconds())}, &res)
+	err = c.Call(ctx, "send", api.SendParams{Peer: peer, Th: *th, Subject: *subject, Re: *re, Parts: parts, Files: abs, WaitAck: ack}, &res)
 	if err != nil {
 		return err
 	}
 	if *f.json {
 		return printJSON(res)
 	}
-	status := "delivering"
+	fmt.Printf("sent %s to %s in %s (%s)\n", res.ID, res.PeerName, res.Th, sendStatus(res, ack > 0))
+	return nil
+}
+
+// sendStatus says what became of a sent message. waited is whether an
+// ack was explicitly waited for.
+func sendStatus(res api.SendResult, waited bool) string {
 	switch {
 	case res.Acked:
-		status = "acknowledged"
+		return "delivered"
 	case !res.Connected:
-		status = "queued until the peer is reachable"
-	case *waitAck > 0:
-		status = "not acknowledged yet"
+		return "queued until the peer is reachable"
+	case waited:
+		return "not acknowledged yet"
 	}
-	fmt.Printf("sent %s to %s in %s (%s)\n", res.ID, res.PeerName, res.Th, status)
-	return nil
+	return "delivering"
 }
 
 // looksLikePeer reports whether s names a known peer or is an address.
@@ -552,8 +575,22 @@ func cmdTail(ctx context.Context, args []string) error {
 	return err
 }
 
+// stateLine says where the peer's state on a thread stands after a wait:
+// the awaited state, or what it still is.
+func stateLine(who string, t *store.Thread, matched bool) string {
+	verb := "is"
+	if !matched {
+		verb = "is still"
+	}
+	s := fmt.Sprintf("%s %s %s on %s", who, verb, t.TheirState, t.Th)
+	if t.TheirNote != "" {
+		s += " (" + t.TheirNote + ")"
+	}
+	return s
+}
+
 func cmdWait(ctx context.Context, args []string) error {
-	f := newFlags("wait", "", "Block until unread messages arrive (optionally in one thread or from one peer),\nprint them and mark them read. With --state, wait until the peer's state on the\nthread is one of the given states. Exits 0 when something arrived, 2 on timeout.")
+	f := newFlags("wait", "", "Block until unread messages arrive (optionally in one thread or from one peer),\nprint them and mark them read. With --state, wait until the peer's state on the\nthread is one of the given states; a message or state change in that thread ends\nthe wait too, and the last line says where the state stands. Notices (connection\nand sharing events) are printed but do not end the wait. Exits 0 when something\narrived, 2 on timeout. Keep --timeout under your shell tool's own limit; many\nallow about 2 minutes.")
 	th := f.StringP("thread", "t", "", "only this thread")
 	peer := f.StringP("peer", "p", "", "only this peer")
 	states := f.StringSlice("state", nil, "wait for the peer's state on --thread to be one of these (e.g. done,failed)")
@@ -582,11 +619,7 @@ func cmdWait(ctx context.Context, args []string) error {
 			if len(res.Events) > 0 {
 				who = res.Events[0].PeerName
 			}
-			fmt.Printf("%s is %s on %s", who, res.Thread.TheirState, res.Thread.Th)
-			if res.Thread.TheirNote != "" {
-				fmt.Printf(" (%s)", res.Thread.TheirNote)
-			}
-			fmt.Println()
+			fmt.Println(stateLine(who, res.Thread, res.Matched))
 		}
 		if res.TimedOut {
 			fmt.Printf("nothing new after %v\n", *timeout)

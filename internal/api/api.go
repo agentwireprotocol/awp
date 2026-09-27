@@ -35,7 +35,8 @@ type Status struct {
 	Serve       []string   `json:"serve,omitempty"`
 	Accept      string     `json:"accept"`
 	Peers       []PeerView `json:"peers"`
-	Unread      int        `json:"unread"`
+	Unread      int        `json:"unread"`  // messages and states from peers not yet read
+	Notices     int        `json:"notices"` // unread local notices (connection, sharing and file events)
 	Outbox      int        `json:"outbox"`
 }
 
@@ -144,7 +145,10 @@ type SendParams struct {
 	Re      string      `json:"re,omitempty"`
 	Parts   []wire.Part `json:"parts,omitempty"`
 	Files   []string    `json:"files,omitempty"` // absolute paths
-	WaitAck int         `json:"wait_ack_ms,omitempty"`
+	// WaitAck is how long to wait for the peer's ack, in milliseconds. Zero
+	// means the default: one second when the peer is connected, none
+	// otherwise. A negative value does not wait.
+	WaitAck int `json:"wait_ack_ms,omitempty"`
 }
 
 // SendResult for "send" and "state".
@@ -186,12 +190,14 @@ type ReadResult struct {
 	Events   []Event       `json:"events"`
 	Cursor   int64         `json:"cursor"`
 	TimedOut bool          `json:"timed_out,omitempty"`
+	Matched  bool          `json:"matched,omitempty"` // wait: the thread reached one of the states asked for
 	Thread   *store.Thread `json:"thread,omitempty"`
 }
 
 // WaitParams for "wait": block until unread inbox events arrive (optionally
-// in one thread or from one peer), or until the thread's remote state is
-// one of States.
+// in one thread or from one peer). With States, also until the thread's
+// remote state is one of them; Matched in the result says which it was.
+// Notices alone do not end a wait: they are returned with whatever does.
 type WaitParams struct {
 	Peer      string   `json:"peer,omitempty"`
 	Th        string   `json:"th,omitempty"`

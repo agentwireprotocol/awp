@@ -304,7 +304,15 @@ func (d *Daemon) status() (*api.Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	unread, _ := st.Query(store.Filter{Inbox: true, UnreadOnly: true, Limit: 100000})
+	inbox, _ := st.Query(store.Filter{Inbox: true, UnreadOnly: true, Limit: 100000})
+	var unread, notices int
+	for _, r := range inbox {
+		if notice(r) {
+			notices++
+		} else {
+			unread++
+		}
+	}
 	last, waiting := n.Activity()
 	var active *time.Time
 	if !last.IsZero() {
@@ -336,7 +344,8 @@ func (d *Daemon) status() (*api.Status, error) {
 		Serve:       d.cfg.Policy.Serve,
 		Accept:      d.cfg.Policy.Accept,
 		Peers:       peers,
-		Unread:      len(unread),
+		Unread:      unread,
+		Notices:     notices,
 		Outbox:      outbox,
 	}
 	if s.Accept == "" {
@@ -344,6 +353,11 @@ func (d *Daemon) status() (*api.Status, error) {
 	}
 	return s, nil
 }
+
+// notice reports whether an inbox record is a local notice (a connection,
+// sharing or file event, dir sys) rather than something the peer sent.
+// Notices are shown, but they neither count as unread nor end a wait.
+func notice(r store.Record) bool { return r.Dir == "sys" }
 
 func (d *Daemon) peerView(p *store.Peer, threads []*store.Thread) api.PeerView {
 	n := d.n
@@ -489,8 +503,12 @@ func (d *Daemon) send(ctx context.Context, p api.SendParams) (*api.SendResult, e
 		return nil, err
 	}
 	out := &api.SendResult{ID: res.ID, Th: res.Th, Thread: res.Th, Peer: key, PeerName: d.view(key).Label(), NewThread: res.NewThread, Connected: res.Connected}
-	if p.WaitAck > 0 {
-		out.Acked = d.waitAck(ctx, key, res.ID, time.Duration(p.WaitAck)*time.Millisecond)
+	wait := time.Duration(p.WaitAck) * time.Millisecond
+	if p.WaitAck == 0 && res.Connected {
+		wait = time.Second // on a live link the ack lands well within that
+	}
+	if wait > 0 {
+		out.Acked = d.waitAck(ctx, key, res.ID, wait)
 		out.Connected = d.n.Connected(key)
 	}
 	return out, nil
@@ -605,20 +623,21 @@ func (d *Daemon) wait(ctx context.Context, p api.WaitParams) (*api.ReadResult, e
 				thread = ts[0]
 			}
 		}
-		done := len(recs) > 0
-		if len(p.States) > 0 {
-			done = thread != nil && slices.Contains(p.States, thread.TheirState)
-		}
-		if done {
+		// Something the peer sent ends the wait, and so does the awaited
+		// state. Notices alone do not: they come back with whatever does.
+		done := slices.ContainsFunc(recs, func(r store.Record) bool { return !notice(r) })
+		matched := len(p.States) > 0 && thread != nil && slices.Contains(p.States, thread.TheirState)
+		if done || matched {
 			d.markRead(recs)
-			return &api.ReadResult{Events: d.events(recs), Cursor: lastSeq(recs), Thread: thread}, nil
+			return &api.ReadResult{Events: d.events(recs), Cursor: lastSeq(recs), Matched: matched, Thread: thread}, nil
 		}
 		select {
 		case <-ch:
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-deadline:
-			return &api.ReadResult{Events: []api.Event{}, TimedOut: true, Thread: thread}, nil
+			d.markRead(recs)
+			return &api.ReadResult{Events: d.events(recs), Cursor: lastSeq(recs), TimedOut: true, Thread: thread}, nil
 		}
 	}
 }
