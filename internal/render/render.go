@@ -63,9 +63,12 @@ func Event(ev api.Event, o Options) string {
 	case wire.TIntroduce:
 		var in wire.Introduce
 		json.Unmarshal(ev.Msg, &in)
-		name := in.Peer.Name
+		// A key prefix can start with -, which looks like a flag: the hint
+		// names the peer, or puts -- ahead of the prefix.
+		name, hint := in.Peer.Name, "holler connect "+in.Peer.Name
 		if name == "" {
 			name = wire.ShortKey(in.Peer.Key)
+			hint = "holler connect -- " + name
 		}
 		fmt.Fprintf(&b, " · introduces %s (%s)", name, in.Peer.Key)
 		if in.Peer.Address != "" {
@@ -76,7 +79,7 @@ func Event(ev api.Event, o Options) string {
 				fmt.Fprintf(&b, " with a grant for [%s]", strings.Join(g.Caps, ", "))
 			}
 		}
-		b.WriteString("\n  connect with: holler connect " + wire.ShortKey(in.Peer.Key) + "\n")
+		b.WriteString("\n  connect with: " + hint + "\n")
 	case wire.TErr:
 		var e wire.Err
 		json.Unmarshal(ev.Msg, &e)

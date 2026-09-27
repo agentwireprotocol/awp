@@ -197,8 +197,9 @@ func (n *Node) onAck(c *Conn, env wire.Envelope) error {
 	if env.Re == "" {
 		return nil
 	}
+	now := time.Now()
 	err := n.st.Tx(func(q store.Q) error {
-		_, _, _, err := store.AckOutbox(q, c.peerKey, env.Re)
+		_, _, _, err := store.AckOutbox(q, c.peerKey, env.Re, now)
 		if err != nil {
 			return err
 		}
@@ -219,7 +220,7 @@ func (n *Node) onResume(c *Conn, line []byte) error {
 	var pruned int64
 	err := n.st.Tx(func(q store.Q) error {
 		var err error
-		pruned, err = store.PruneSeen(q, c.peerKey, r.Seen)
+		pruned, err = store.PruneSeen(q, c.peerKey, r.Seen, time.Now())
 		return err
 	})
 	if err != nil {

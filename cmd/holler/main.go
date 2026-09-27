@@ -12,6 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -143,6 +145,74 @@ func newFlags(name, args, summary string) *flags {
 		fs.PrintDefaults()
 	}
 	return f
+}
+
+// keyPrefix matches a positional that pflag would read as a cluster of
+// shorthand flags: a peer's key prefix that starts with - (keys are
+// base64url, so one in 64 does).
+var keyPrefix = regexp.MustCompile(`^-[A-Za-z0-9_-]{5,}$`)
+
+// keyMark hides such a prefix from pflag, so it parses as a positional and
+// the flags after it still count. Args and Arg take the mark off again.
+const keyMark = "\x00"
+
+// Parse parses args, marking every positional that looks like a key prefix
+// first, so `holler connect -EdZIWymh9` and `holler send -EdZIWymh9 hi
+// --json` both work.
+func (f *flags) Parse(args []string) error {
+	return f.FlagSet.Parse(keyPrefixArgs(f.FlagSet, args))
+}
+
+func (f *flags) Args() []string {
+	out := slices.Clone(f.FlagSet.Args())
+	for i, a := range out {
+		out[i] = strings.TrimPrefix(a, keyMark)
+	}
+	return out
+}
+
+func (f *flags) Arg(i int) string {
+	return strings.TrimPrefix(f.FlagSet.Arg(i), keyMark)
+}
+
+func keyPrefixArgs(fs *pflag.FlagSet, args []string) []string {
+	out := slices.Clone(args)
+	for i, a := range args {
+		if a == "--" {
+			break
+		}
+		// Not a long flag, a defined flag or shorthand, or the value of the
+		// flag before it.
+		if strings.HasPrefix(a, "--") || !keyPrefix.MatchString(a) || fs.ShorthandLookup(a[1:2]) != nil || fs.Lookup(a[1:]) != nil || i > 0 && wantsValue(fs, args[i-1]) {
+			continue
+		}
+		out[i] = keyMark + a
+	}
+	return out
+}
+
+// wantsValue reports whether arg is a flag that takes the next argument as
+// its value.
+func wantsValue(fs *pflag.FlagSet, arg string) bool {
+	if arg == "--" || !strings.HasPrefix(arg, "-") || strings.Contains(arg, "=") {
+		return false
+	}
+	if name, ok := strings.CutPrefix(arg, "--"); ok {
+		fl := fs.Lookup(name)
+		return fl != nil && fl.NoOptDefVal == ""
+	}
+	// In a cluster of shorthands, the first one that takes a value takes
+	// the rest of the cluster, or the next argument if it is the last.
+	for i := 1; i < len(arg); i++ {
+		fl := fs.ShorthandLookup(arg[i : i+1])
+		if fl == nil {
+			return false
+		}
+		if fl.NoOptDefVal == "" {
+			return i == len(arg)-1
+		}
+	}
+	return false
 }
 
 func (f *flags) client() *control.Client {

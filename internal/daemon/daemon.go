@@ -477,7 +477,7 @@ func (d *Daemon) send(ctx context.Context, p api.SendParams) (*api.SendResult, e
 	if err != nil {
 		return nil, err
 	}
-	out := &api.SendResult{ID: res.ID, Th: res.Th, Peer: key, PeerName: d.view(key).Label(), NewThread: res.NewThread, Connected: res.Connected}
+	out := &api.SendResult{ID: res.ID, Th: res.Th, Thread: res.Th, Peer: key, PeerName: d.view(key).Label(), NewThread: res.NewThread, Connected: res.Connected}
 	if p.WaitAck > 0 {
 		out.Acked = d.waitAck(ctx, key, res.ID, time.Duration(p.WaitAck)*time.Millisecond)
 		out.Connected = d.n.Connected(key)
@@ -513,7 +513,7 @@ func (d *Daemon) state(p api.StateParams) (*api.SendResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &api.SendResult{ID: res.ID, Th: res.Th, Peer: key, PeerName: d.view(key).Label(), Connected: res.Connected}, nil
+	return &api.SendResult{ID: res.ID, Th: res.Th, Thread: res.Th, Peer: key, PeerName: d.view(key).Label(), Connected: res.Connected}, nil
 }
 
 func (d *Daemon) filterPeer(peer string) (string, error) {
@@ -769,7 +769,7 @@ func (d *Daemon) introduce(p api.IntroduceParams) (*api.SendResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &api.SendResult{ID: res.ID, Th: res.Th, Peer: to, PeerName: d.view(to).Label(), Connected: res.Connected}, nil
+	return &api.SendResult{ID: res.ID, Th: res.Th, Thread: res.Th, Peer: to, PeerName: d.view(to).Label(), Connected: res.Connected}, nil
 }
 
 func hostname() string {

@@ -293,6 +293,36 @@ func TestBlob(t *testing.T) {
 	waitFor(t, a, "outbox drained after refusal", func() bool { return outboxLen(a, b.Key()) == 0 })
 }
 
+// TestBlobSentOnAck checks that the sender's record of an outgoing blob
+// turns from queued to sent when the peer acks the msg that carries it.
+func TestBlobSentOnAck(t *testing.T) {
+	a, b := testNode(t, "a"), testNode(t, "b")
+	connect(t, a, b)
+	bKey := b.Key()
+	b.Close()
+	waitFor(t, a, "disconnect", func() bool { return !a.Connected(bKey) })
+
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	os.WriteFile(path, []byte("queued while b is away"), 0o600)
+	if _, err := a.Send(SendRequest{Peer: bKey, Parts: text(t, "file attached"), Files: []string{path}}); err != nil {
+		t.Fatal(err)
+	}
+	bs, _ := a.Store().Blobs(bKey)
+	if len(bs) != 1 || bs[0].Status != "queued" {
+		t.Fatalf("blobs before delivery: %+v", bs)
+	}
+	queued := bs[0].Updated
+
+	b = restart(t, b)
+	waitFor(t, a, "blob sent", func() bool {
+		bs, _ = a.Store().Blobs(bKey)
+		return len(bs) == 1 && bs[0].Status == "sent"
+	})
+	if !bs[0].Updated.After(queued) || outboxLen(a, bKey) != 0 {
+		t.Fatalf("blob %+v with %d lines still queued", bs[0], outboxLen(a, bKey))
+	}
+}
+
 // rawPeer is a minimal hand-driven peer for negative tests.
 type rawPeer struct {
 	t    *testing.T

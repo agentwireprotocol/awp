@@ -465,9 +465,10 @@ func (s *Store) OutboxAfter(peer string, after int64, limit int) ([]OutboxRow, e
 var unacked = []string{"chunk", "introduce"}
 
 // AckOutbox removes the acked message from the outbox, together with any
-// earlier never-acked lines in the same thread. It reports the row's thread
-// and type, and whether it was found.
-func AckOutbox(q Q, peer, id string) (th, t string, found bool, err error) {
+// earlier never-acked lines in the same thread, and marks the outgoing
+// blobs those lines carried as sent. It reports the row's thread and type,
+// and whether it was found.
+func AckOutbox(q Q, peer, id string, now time.Time) (th, t string, found bool, err error) {
 	var seq int64
 	err = q.QueryRow(`SELECT seq, th, t FROM outbox WHERE peer = ? AND id = ?`, peer, id).Scan(&seq, &th, &t)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -480,15 +481,27 @@ func AckOutbox(q Q, peer, id string) (th, t string, found bool, err error) {
 		return
 	}
 	if th != "" {
-		_, err = q.Exec(`DELETE FROM outbox WHERE peer = ? AND th = ? AND seq < ? AND t IN ('chunk', 'introduce')`, peer, th, seq)
+		if _, err = q.Exec(`DELETE FROM outbox WHERE peer = ? AND th = ? AND seq < ? AND t IN ('chunk', 'introduce')`, peer, th, seq); err != nil {
+			return
+		}
+		err = blobsSent(q, peer, th, now)
 	}
 	return th, t, true, err
 }
 
+// blobsSent marks the outgoing blobs of a thread whose chunks have all left
+// the outbox as sent: the peer acked, or has seen, the msg that carries them.
+func blobsSent(q Q, peer, th string, now time.Time) error {
+	_, err := q.Exec(`UPDATE blobs SET status = 'sent', updated = ? WHERE peer = ? AND dir = 'out' AND th = ? AND status = 'queued'
+		AND ref NOT IN (SELECT ref FROM outbox WHERE peer = ? AND t = 'chunk')`, ms(now), peer, th, peer)
+	return err
+}
+
 // PruneSeen drops outbox rows the peer's resume says it already has: in
 // each listed thread, everything up to and including the seen id. The
-// matching log rows are marked acked, since "seen" means durably received.
-func PruneSeen(q Q, peer string, seen map[string]string) (int64, error) {
+// matching log rows are marked acked, since "seen" means durably received,
+// and blobs whose chunks are all seen are sent.
+func PruneSeen(q Q, peer string, seen map[string]string, now time.Time) (int64, error) {
 	var n int64
 	for th, id := range seen {
 		if th == "" || id == "" {
@@ -501,6 +514,9 @@ func PruneSeen(q Q, peer string, seen map[string]string) (int64, error) {
 		k, _ := res.RowsAffected()
 		n += k
 		if _, err := q.Exec(`UPDATE log SET acked = 1 WHERE peer = ? AND dir = 'out' AND th = ? AND id <= ? AND acked = 0`, peer, th, id); err != nil {
+			return n, err
+		}
+		if err := blobsSent(q, peer, th, now); err != nil {
 			return n, err
 		}
 	}
@@ -908,7 +924,7 @@ type Blob struct {
 	Received int64     `json:"received"`
 	NextN    int       `json:"next_n"`
 	Path     string    `json:"path,omitempty"`
-	Status   string    `json:"status"` // pending; received (data in, awaiting the msg that names it); complete; refused
+	Status   string    `json:"status"` // in: pending; received (data in, awaiting the msg that names it); complete; refused. out: queued; sent (the msg that carries it was acked); refused
 	Updated  time.Time `json:"updated"`
 }
 

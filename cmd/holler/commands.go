@@ -330,6 +330,9 @@ func cmdSend(ctx context.Context, args []string) error {
 	if err := f.Parse(args); err != nil {
 		return err
 	}
+	if f.Changed("thread") && *th == "" {
+		return errors.New("--thread is empty")
+	}
 	c, err := f.ensureDaemon()
 	if err != nil {
 		return err
@@ -379,6 +382,9 @@ func cmdSend(ctx context.Context, args []string) error {
 		}
 		abs = append(abs, a)
 	}
+	if *th != "" && !*f.json {
+		unreadNote(ctx, c, peer, *th)
+	}
 	var res api.SendResult
 	err = c.Call(ctx, "send", api.SendParams{Peer: peer, Th: *th, Subject: *subject, Re: *re, Parts: parts, Files: abs, WaitAck: int(waitAck.Milliseconds())}, &res)
 	if err != nil {
@@ -420,6 +426,39 @@ func looksLikePeer(ctx context.Context, c interface {
 	return false
 }
 
+// unreadNote tells the agent, on stderr, when it is about to reply in a
+// thread that still has unread messages from the peer. The send goes ahead.
+func unreadNote(ctx context.Context, c interface {
+	Call(context.Context, string, any, any) error
+}, peer, th string) {
+	var threads []*store.Thread
+	if c.Call(ctx, "threads", api.PeerParams{Peer: peer}, &threads) != nil {
+		return
+	}
+	var peers []api.PeerView
+	c.Call(ctx, "peers", nil, &peers)
+	if s := unreadLine(threads, peers, th); s != "" {
+		fmt.Fprintln(os.Stderr, s)
+	}
+}
+
+// unreadLine is the note for th, or "" when nothing there is unread.
+func unreadLine(threads []*store.Thread, peers []api.PeerView, th string) string {
+	for _, t := range threads {
+		if t.Th != th || t.Unread == 0 {
+			continue
+		}
+		name := wire.ShortKey(t.Peer)
+		for _, p := range peers {
+			if p.Key == t.Peer {
+				name = p.Label()
+			}
+		}
+		return fmt.Sprintf("note: %d unread from %s in this thread (%s): holler read %s", t.Unread, name, ago(t.Updated), t.Th)
+	}
+	return ""
+}
+
 func cmdState(ctx context.Context, args []string) error {
 	f := newFlags("state", "[<peer>] <thread> <state>", "Tell the peer your view of a thread: open, working, waiting, done, failed or\nclosed (other words are allowed). The peer can be left out when the thread id\nis unique.")
 	note := f.StringP("note", "n", "", "short note, e.g. what you are doing or why it failed")
@@ -440,6 +479,9 @@ func cmdState(ctx context.Context, args []string) error {
 	c, err := f.ensureDaemon()
 	if err != nil {
 		return err
+	}
+	if !*f.json {
+		unreadNote(ctx, c, p.Peer, p.Th)
 	}
 	var res api.SendResult
 	if err := c.Call(ctx, "state", p, &res); err != nil {

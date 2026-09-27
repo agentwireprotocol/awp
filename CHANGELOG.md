@@ -4,6 +4,18 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 ## [Unreleased]
 
+### Added
+
+- `holler send --thread` and `holler state` say when the thread still has unread messages from the peer, so an agent does not reply over a message it has not read: `note: 2 unread from qa-lead@sprite in this thread (47s ago): holler read thr_…`. Not under `--json`.
+- `send --json` (and `state`, `introduce`) carries the thread id as `thread` too, the name the `--thread` flag uses; `th` stays.
+
+### Fixed
+
+- A key prefix that begins with `-` (one base64url key in 64) is accepted anywhere a peer is expected, and the flags around it still count: `holler connect -EdZIWymh9` no longer fails with "unknown shorthand flag". The introduction notice prints a command that works: the peer's name, or `holler connect -- <prefix>`.
+- `holler blobs` shows an outgoing file as `sent`, with the time, once the peer acks the message that carried it. It sat at `queued` forever.
+- `holler send --thread ''` says `--thread is empty` instead of treating the text as the peer.
+- `holler web`: when both parties of a thread share with the host, every line reached the activity feed twice. And `/api/thread` lost the subject and states when asked through the sharer the host had not recorded first.
+
 ## [0.3.0] - 2026-09-26
 
 ### Removed

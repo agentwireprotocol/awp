@@ -149,6 +149,7 @@ type SendParams struct {
 type SendResult struct {
 	ID        string `json:"id"`
 	Th        string `json:"th"`
+	Thread    string `json:"thread"` // th again, under the name the --thread flag uses
 	Peer      string `json:"peer"`
 	PeerName  string `json:"peer_name,omitempty"`
 	NewThread bool   `json:"new_thread,omitempty"`
