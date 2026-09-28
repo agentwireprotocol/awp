@@ -1,4 +1,4 @@
-// Package transport provides the byte-stream bindings holler runs over
+// Package transport provides the byte-stream bindings awp runs over
 // (SPEC.md section 4): tailcat, embedded as a library, plus plain TCP and
 // Unix sockets for Fly 6PN, local use and tests.
 package transport
@@ -20,9 +20,9 @@ import (
 	"tailscale.com/types/logger"
 )
 
-// TailcatPort is the port holler listens on inside the tailcat tunnel. It
+// TailcatPort is the port awp listens on inside the tailcat tunnel. It
 // is the port tailcat's own pipe mode uses, so `tailcat <addr>` connects a
-// terminal straight to a holler peer: you can type NDJSON at it.
+// terminal straight to a awp peer: you can type NDJSON at it.
 const TailcatPort = 1
 
 // Kinds of address.
@@ -32,7 +32,7 @@ const (
 	KindUnix    = "unix"
 )
 
-// Addr is a parsed holler address.
+// Addr is a parsed awp address.
 type Addr struct {
 	Kind   string
 	Target string // tailcat address, host:port or socket path
@@ -91,14 +91,14 @@ func looksTailcat(s string) bool {
 	return true
 }
 
-// Transport dials holler addresses. It keeps one tailcat client per
+// Transport dials awp addresses. It keeps one tailcat client per
 // tailcat address, since each client is a whole userspace WireGuard node.
 type Transport struct {
 	// Logf receives tailcat's diagnostics. Nil discards them.
 	Logf logger.Logf
 
 	// AllowPublicTCP permits plain TCP to public addresses. By default
-	// holler refuses, as section 4.2 asks: plain TCP has no encryption, so
+	// awp refuses, as section 4.2 asks: plain TCP has no encryption, so
 	// it is only for loopback and private networks such as Fly's 6PN.
 	AllowPublicTCP bool
 
@@ -148,7 +148,7 @@ func checkPrivate(ctx context.Context, target string) error {
 	for _, ip := range ips {
 		ip = ip.Unmap()
 		if !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || cgnat.Contains(ip)) {
-			return fmt.Errorf("refusing plain TCP to public address %s: holler over TCP is unencrypted (use a tailcat address, or set HOLLER_ALLOW_PLAINTEXT=1)", ip)
+			return fmt.Errorf("refusing plain TCP to public address %s: awp over TCP is unencrypted (use a tailcat address, or set AWP_ALLOW_PLAINTEXT=1)", ip)
 		}
 	}
 	return nil
@@ -221,7 +221,7 @@ func Listen(a Addr) (net.Listener, error) {
 	return nil, fmt.Errorf("cannot listen on %s addresses this way", a.Kind)
 }
 
-// TailcatListener is a holler listener inside a tailcat tunnel.
+// TailcatListener is a awp listener inside a tailcat tunnel.
 type TailcatListener struct {
 	net.Listener
 	srv  *tailcat.Server

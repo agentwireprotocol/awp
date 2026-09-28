@@ -4,8 +4,8 @@ The two implementations were written separately from SPEC.md, so these tests
 check the spec, not one implementation's reading of it. Run from this
 directory with the Go binary built:
 
-    go build -o /tmp/holler ../cmd/holler
-    HOLLER_BIN=/tmp/holler python3 -m unittest -v interop_test
+    go build -o /tmp/awp ../cmd/awp
+    AWP_BIN=/tmp/awp python3 -m unittest -v interop_test
 """
 
 import hashlib
@@ -23,8 +23,8 @@ import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PEER = os.path.join(HERE, "holler_peer.py")
-BIN = os.environ.get("HOLLER_BIN", "holler")
+PEER = os.path.join(HERE, "awp_peer.py")
+BIN = os.environ.get("AWP_BIN", "awp")
 
 
 def free_port():
@@ -97,7 +97,7 @@ class GoPeer:
 
     def __init__(self, home, listen, name="go", extra_env=None):
         self.home = home
-        self.env = dict(os.environ, HOLLER_HOME=home, HOLLER_NAME=name, HOLLER_LISTEN=listen, HOLLER_PING_INTERVAL="5s")
+        self.env = dict(os.environ, AWP_HOME=home, AWP_NAME=name, AWP_LISTEN=listen, AWP_PING_INTERVAL="5s")
         self.env.update(extra_env or {})
         self.start()
 
@@ -114,7 +114,7 @@ class GoPeer:
     def run(self, *args, check=True, timeout=60):
         r = subprocess.run([BIN, *args], env=self.env, capture_output=True, text=True, timeout=timeout)
         if check and r.returncode != 0:
-            raise AssertionError(f"holler {' '.join(args)} failed ({r.returncode}): {r.stderr}{r.stdout}")
+            raise AssertionError(f"awp {' '.join(args)} failed ({r.returncode}): {r.stderr}{r.stdout}")
         return r.stdout
 
     def json(self, *args, **kw):
@@ -173,7 +173,7 @@ class Interop(unittest.TestCase):
         port = free_port()
         py = self.py("listen", f"tcp:127.0.0.1:{port}")
         py.expect(lambda e: e.get("event") == "listening", "listening")
-        go = self.go(extra_env={"HOLLER_SERVE": "exec", "HOLLER_ROOT": self.dir})
+        go = self.go(extra_env={"AWP_SERVE": "exec", "AWP_ROOT": self.dir})
         gokey = go.key()
 
         out = go.run("connect", f"tcp:127.0.0.1:{port}")
@@ -237,7 +237,7 @@ class Interop(unittest.TestCase):
         self.assertEqual(held[0]["caps"], ["fs:read"])
 
         # An exec request without a grant is refused with err forbidden.
-        exec_part = {"k": "data", "mime": "application/vnd.holler.exec+json", "data": {"cmd": ["echo", "interop"]}}
+        exec_part = {"k": "data", "mime": "application/vnd.awp.exec+json", "data": {"cmd": ["echo", "interop"]}}
         py.cmd(cmd="send", th=th, parts=[exec_part])
         e = py.expect(lambda e: e.get("event") == "recv" and e["msg"]["t"] == "err", "err forbidden")["msg"]
         self.assertEqual(e["code"], "forbidden")
@@ -251,9 +251,9 @@ class Interop(unittest.TestCase):
         def exec_result(e):
             if e.get("event") != "recv" or e["msg"]["t"] != "msg":
                 return False
-            return any(p.get("mime") == "application/vnd.holler.exec-result+json" for p in e["msg"]["parts"])
+            return any(p.get("mime") == "application/vnd.awp.exec-result+json" for p in e["msg"]["parts"])
         r = py.expect(exec_result, "exec result")["msg"]
-        data = [p for p in r["parts"] if p.get("mime") == "application/vnd.holler.exec-result+json"][0]["data"]
+        data = [p for p in r["parts"] if p.get("mime") == "application/vnd.awp.exec-result+json"][0]["data"]
         self.assertEqual((data["exit"], data["stdout"]), (0, "interop\n"))
 
         # Bye from Python closes cleanly on both sides.

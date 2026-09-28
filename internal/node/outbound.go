@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // SendRequest describes a msg to send.
@@ -375,7 +375,7 @@ func (n *Node) ResolvePeer(s string) (string, error) {
 			return "", fmt.Errorf("%q matches several peers (%s); use more of the key", s, strings.Join(short, ", "))
 		}
 	}
-	return "", fmt.Errorf("no peer matches %q (see `holler peers`)", s)
+	return "", fmt.Errorf("no peer matches %q (see `awp peers`)", s)
 }
 
 // ResolveThread finds which peer a thread id belongs to.

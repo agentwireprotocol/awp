@@ -1,4 +1,4 @@
-// Package control is the local API between the holler daemon and its
+// Package control is the local API between the awp daemon and its
 // clients (the CLI, the MCP server, harness hooks): newline-delimited JSON
 // over a Unix socket that only the owning user can open.
 //
@@ -22,12 +22,12 @@ import (
 	"time"
 )
 
-// SocketName is the control socket's file name inside the holler home.
-const SocketName = "holler.sock"
+// SocketName is the control socket's file name inside the awp home.
+const SocketName = "awp.sock"
 
-// socketPointer is the file in the holler home that names the socket when
+// socketPointer is the file in the awp home that names the socket when
 // it lives elsewhere, so a client finds it whatever its environment.
-const socketPointer = "holler.sock.path"
+const socketPointer = "awp.sock.path"
 
 // maxSocketPath keeps socket paths under the kernel's sun_path limit (108
 // bytes on Linux, 104 on macOS).
@@ -49,7 +49,7 @@ func SocketPath(home string) (string, error) {
 	sum := sha256.Sum256([]byte(abs))
 	dir := os.Getenv("XDG_RUNTIME_DIR")
 	if dir == "" || len(dir) > maxSocketPath-40 {
-		dir = filepath.Join(os.TempDir(), fmt.Sprintf("holler-%d", os.Getuid()))
+		dir = filepath.Join(os.TempDir(), fmt.Sprintf("awp-%d", os.Getuid()))
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return "", err
 		}
@@ -59,7 +59,7 @@ func SocketPath(home string) (string, error) {
 			return "", err
 		}
 	}
-	return filepath.Join(dir, "holler-"+hex.EncodeToString(sum[:8])+".sock"), nil
+	return filepath.Join(dir, "awp-"+hex.EncodeToString(sum[:8])+".sock"), nil
 }
 
 // Request is one call.
@@ -177,7 +177,7 @@ func serveOne(ctx context.Context, c net.Conn, h Handler) {
 }
 
 // ErrNoDaemon means nothing is listening on the control socket.
-var ErrNoDaemon = errors.New("holler daemon is not running")
+var ErrNoDaemon = errors.New("awp daemon is not running")
 
 // Client calls a daemon.
 type Client struct {

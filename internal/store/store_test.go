@@ -25,7 +25,7 @@ const oldThreads = `CREATE TABLE threads (
 // An older database gets the since columns at open, filled from updated,
 // and opening it again leaves them alone.
 func TestThreadSinceMigration(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "holler.db")
+	path := filepath.Join(t.TempDir(), "awp.db")
 	db, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ func TestThreadSinceMigration(t *testing.T) {
 
 // A side's since moves when its state or note changes, and only then.
 func TestSetThreadStateSince(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "holler.db"))
+	s, err := Open(filepath.Join(t.TempDir(), "awp.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

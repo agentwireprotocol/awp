@@ -19,8 +19,8 @@ func TestEmbeddedPlugin(t *testing.T) {
 		".claude-plugin/plugin.json",
 		".mcp.json",
 		"com.anthropic.claude-code/hooks.json",
-		"skills/holler/SKILL.md",
-		"bin/holler",
+		"skills/awp/SKILL.md",
+		"bin/awp",
 		"plugin.json",
 		"mcp.json",
 	} {

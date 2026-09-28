@@ -69,7 +69,7 @@ export function agoText(iso: string | undefined, now = Date.now()): string {
 }
 
 /** How long, after saying it is working, an agent may do nothing through
- *  holler before the dashboard points it out. */
+ *  awp before the dashboard points it out. */
 export const QUIET_AFTER_MIN = 10
 
 /** Minutes a working agent has done nothing, when that is worth showing.

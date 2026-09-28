@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 func presenceOf(t *testing.T, n *Node, origin string) *store.PresenceRow {

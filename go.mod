@@ -1,4 +1,4 @@
-module github.com/hollerprotocol/holler
+module github.com/agentwireprotocol/awp
 
 go 1.27.1
 

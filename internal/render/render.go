@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/api"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/api"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Options tune the output.
@@ -65,10 +65,10 @@ func Event(ev api.Event, o Options) string {
 		json.Unmarshal(ev.Msg, &in)
 		// A key prefix can start with -, which looks like a flag: the hint
 		// names the peer, or puts -- ahead of the prefix.
-		name, hint := in.Peer.Name, "holler connect "+in.Peer.Name
+		name, hint := in.Peer.Name, "awp connect "+in.Peer.Name
 		if name == "" {
 			name = wire.ShortKey(in.Peer.Key)
-			hint = "holler connect -- " + name
+			hint = "awp connect -- " + name
 		}
 		fmt.Fprintf(&b, " · introduces %s (%s)", name, in.Peer.Key)
 		if in.Peer.Address != "" {
@@ -111,7 +111,7 @@ func Event(ev api.Event, o Options) string {
 			for _, x := range names {
 				ns = append(ns, fmt.Sprint(x))
 			}
-			fmt.Fprintf(&b, " · shares its conversations with %s, so they can read your messages to it. `holler private <thread>` keeps a thread out.\n", strings.Join(ns, ", "))
+			fmt.Fprintf(&b, " · shares its conversations with %s, so they can read your messages to it. `awp private <thread>` keeps a thread out.\n", strings.Join(ns, ", "))
 		} else {
 			fmt.Fprintf(&b, " · stopped sharing its conversations\n")
 		}
@@ -242,7 +242,7 @@ func Events(evs []api.Event, max int) string {
 		b.WriteString(Event(ev, Options{ShowThread: true, MaxText: 4000}))
 	}
 	if len(shown) < len(evs) {
-		fmt.Fprintf(&b, "(%d earlier messages not shown; run `holler read <thread>` for the full history)\n", len(evs)-len(shown))
+		fmt.Fprintf(&b, "(%d earlier messages not shown; run `awp read <thread>` for the full history)\n", len(evs)-len(shown))
 	}
 	return b.String()
 }

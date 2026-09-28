@@ -1,0 +1,26 @@
+#!/bin/sh
+# awp launcher: runs the awp build for this OS and CPU from libexec/,
+# or falls back to a awp installed elsewhere on PATH.
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+os=$(uname -s | tr '[:upper:]' '[:lower:]')
+case $(uname -m) in
+  x86_64 | amd64) arch=amd64 ;;
+  aarch64 | arm64) arch=arm64 ;;
+  *) arch=$(uname -m) ;;
+esac
+bin="$dir/../libexec/awp-$os-$arch"
+if [ -x "$bin" ]; then
+  exec "$bin" "$@"
+fi
+# Not bundled for this platform: use another awp on PATH (never this script).
+IFS=:
+for p in $PATH; do
+  [ -n "$p" ] && [ "$p" != "$dir" ] || continue
+  if [ -x "$p/awp" ] && ! [ "$p/awp" -ef "$0" ]; then
+    exec "$p/awp" "$@"
+  fi
+done
+echo "awp: this plugin has no build for $os-$arch." >&2
+echo "Use the plugin bundle from a release (awp-plugin_<version>.tar.gz), put a awp" >&2
+echo "binary from a release on PATH, or: go install github.com/agentwireprotocol/awp/cmd/awp@latest" >&2
+exit 127

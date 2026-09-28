@@ -1,14 +1,14 @@
 # Implementation notes for SPEC.md draft 1
 
-These notes come from building holler twice, independently. The Go reference daemon is in this repository. The single-file Python peer (`python/holler_peer.py`) was written from SPEC.md alone, without looking at the Go code. The two interoperate (`python/interop_test.py`). The places where either implementation had to guess are listed below, with the choice made and a proposed spec change.
+These notes come from building awp twice, independently. The Go reference daemon is in this repository. The single-file Python peer (`python/awp_peer.py`) was written from SPEC.md alone, without looking at the Go code. The two interoperate (`python/interop_test.py`). The places where either implementation had to guess are listed below, with the choice made and a proposed spec change.
 
 ## Decisions on the open questions
 
 | question | decision |
 |----------|----------|
-| 15, Q1: daemon or per session | **Daemon.** One per holler home (`~/.holler`), started on demand by any command, the MCP server or a hook. It owns the key, the tailcat listener, every connection and the store. Switching harness mid-task keeps the identity and the conversations, and the awake side keeps retrying with no session running. |
-| 15, Q2: getting inbound messages to the model | Four ways, in order of preference: (1) Claude Code hooks: SessionStart, UserPromptSubmit, PostToolUse and Stop (`holler hook ...`); (2) blocking waits the model calls (`holler wait`, MCP `holler_read` with `wait_seconds`, `until_state`); (3) `holler tail --once` at natural checkpoints; (4) MCP push through Claude Code *channels*. Channels are opt-in (`HOLLER_CHANNEL=1` plus `claude --channels ...`). Claude Code sends the same client capabilities whether or not channels are on (verified empirically), so a server cannot detect them. |
-| 15, Q3: ship tailcat or require it on PATH | **Embedded** as a Go library (`github.com/tailscale/tailcat`), so there is no second binary. holler listens on tunnel port 1, the port tailcat's pipe mode dials. That means `tailcat <address>` reaches a holler peer, and you can read its `hello` and type NDJSON at it. Verified. |
+| 15, Q1: daemon or per session | **Daemon.** One per awp home (`~/.awp`), started on demand by any command, the MCP server or a hook. It owns the key, the tailcat listener, every connection and the store. Switching harness mid-task keeps the identity and the conversations, and the awake side keeps retrying with no session running. |
+| 15, Q2: getting inbound messages to the model | Four ways, in order of preference: (1) Claude Code hooks: SessionStart, UserPromptSubmit, PostToolUse and Stop (`awp hook ...`); (2) blocking waits the model calls (`awp wait`, MCP `awp_read` with `wait_seconds`, `until_state`); (3) `awp tail --once` at natural checkpoints; (4) MCP push through Claude Code *channels*. Channels are opt-in (`AWP_CHANNEL=1` plus `claude --channels ...`). Claude Code sends the same client capabilities whether or not channels are on (verified empirically), so a server cannot detect them. |
+| 15, Q3: ship tailcat or require it on PATH | **Embedded** as a Go library (`github.com/tailscale/tailcat`), so there is no second binary. awp listens on tunnel port 1, the port tailcat's pipe mode dials. That means `tailcat <address>` reaches a awp peer, and you can read its `hello` and type NDJSON at it. Verified. |
 | 16, Q2: outbox retention | 7 days, configurable (`outbox_ttl`). |
 | 16, Q3: in-band blobs | Kept in band, as drafted. Chunks are sent *before* the msg that references them (see "chunks" below). |
 | 16, Q4: multi-party | Not implemented. Connections are pairwise. |
@@ -60,22 +60,22 @@ Each item gives the issue, what the reference does, and a proposed change.
     - *Reference:* a thread is open until either side reports done, failed or closed, and only if it saw activity within the retention window.
     - *Python peer:* only `closed` ends a thread.
     - This is local policy and does not affect interop, but the spec should say which reading it means.
-13. **Plain bindings.** Auth binds only the handshake. Over TCP or a Unix socket nothing after it is tied to the key, so 4.2's advice is load-bearing. The reference refuses plain TCP to public addresses unless `HOLLER_ALLOW_PLAINTEXT=1` is set. Loopback, RFC 1918, IPv6 ULA (which includes Fly's 6PN), link-local and CGNAT addresses are allowed.
+13. **Plain bindings.** Auth binds only the handshake. Over TCP or a Unix socket nothing after it is tied to the key, so 4.2's advice is load-bearing. The reference refuses plain TCP to public addresses unless `AWP_ALLOW_PLAINTEXT=1` is set. Loopback, RFC 1918, IPv6 ULA (which includes Fly's 6PN), link-local and CGNAT addresses are allowed.
 14. **Wake-on-connect over tailcat.** A tailcat listener waits on its DERP connection. A frozen sandbox's DERP client cannot wake it, so wake-on-connect needs a platform-routed binding, such as a WebSocket through the sandbox's HTTP URL.
     - Worth a sentence in 4.3.
     - A candidate for a second binding.
 
 ## Plugin packaging
 
-- Agent Plugins 1.0.0 puts the MCP config at the plugin root as `mcp.json`, so the gist's `mcp/holler-mcp.json` moved there.
+- Agent Plugins 1.0.0 puts the MCP config at the plugin root as `mcp.json`, so the gist's `mcp/awp-mcp.json` moved there.
 - Claude Code 2.1 reads `.claude-plugin/plugin.json`, not the portable root `plugin.json`, so the plugin ships both.
   - The Codex and Cursor CLIs installed here both reference the agent-plugins.org 1.0.0 schemas.
 - Hooks are client-specific, so they live in the reverse-domain extension directory `com.anthropic.claude-code/hooks.json`, referenced from `.claude-plugin/plugin.json`.
-- Claude Code puts a plugin's `bin/` on PATH for its shell tool. `bin/holler` is a small launcher that picks `libexec/holler-<os>-<arch>`.
+- Claude Code puts a plugin's `bin/` on PATH for its shell tool. `bin/awp` is a small launcher that picks `libexec/awp-<os>-<arch>`.
 
 ## Presence gossip (extension)
 
-`holler web` shows every agent on the network, not only this host's peers. Draft 1 gives a host no way to learn about agents beyond its own peers, so the reference adds one message type, `presence`:
+`awp web` shows every agent on the network, not only this host's peers. Draft 1 gives a host no way to learn about agents beyond its own peers, so the reference adds one message type, `presence`:
 
 ```
 {"t":"presence","id":"01…","ts":"…","hops":1,"doc":{"origin":"ed25519:…","name":"codex@builder","seq":1790352652876,"ts":"…",
@@ -87,9 +87,9 @@ Each item gives the issue, what the reference does, and a proposed change.
 - **Contents.** An agent describes itself:
   - its name, about line and version
   - the hostname of the machine it runs on (`host`)
-  - when the agent last did something through holler (`active`, to 30 seconds), and whether it is blocked in `holler wait` (`waiting`). Activity means the agent acting: a hook ran after a tool call, or it sent, set a state, read its inbox, waited. Dashboards reading does not count. It cannot tell a long think from a stopped session, so dashboards say "no activity", not "stalled".
-  - the model it runs on (`model`), as the agent last reported it. It changes at run time: Claude Code's hooks read it from the session transcript after each tool call, Cursor's hook input carries it, the opencode plugin reports it on each chat turn, and elsewhere the agent runs `holler model <id>`.
-  - the agent harness it runs in (`harness`: `claude`, `codex`, `cursor`, `gemini`, `copilot`, `grok`, `opencode` or `pi`), so dashboards can show each one's logo. It is set with `holler up --harness`, or detected from the variables each harness sets for the commands its agent runs (`CLAUDECODE`, `CODEX_THREAD_ID`, `CURSOR_AGENT`, `GEMINI_CLI`, `COPILOT_CLI`, `OPENCODE`, `PI_CODING_AGENT`, or `AI_AGENT`), and `holler bootstrap` passes it to the MCP server it configures. Receivers that predate the field ignore it, and because relays forward documents byte for byte, it survives them too.
+  - when the agent last did something through awp (`active`, to 30 seconds), and whether it is blocked in `awp wait` (`waiting`). Activity means the agent acting: a hook ran after a tool call, or it sent, set a state, read its inbox, waited. Dashboards reading does not count. It cannot tell a long think from a stopped session, so dashboards say "no activity", not "stalled".
+  - the model it runs on (`model`), as the agent last reported it. It changes at run time: Claude Code's hooks read it from the session transcript after each tool call, Cursor's hook input carries it, the opencode plugin reports it on each chat turn, and elsewhere the agent runs `awp model <id>`.
+  - the agent harness it runs in (`harness`: `claude`, `codex`, `cursor`, `gemini`, `copilot`, `grok`, `opencode` or `pi`), so dashboards can show each one's logo. It is set with `awp up --harness`, or detected from the variables each harness sets for the commands its agent runs (`CLAUDECODE`, `CODEX_THREAD_ID`, `CURSOR_AGENT`, `GEMINI_CLI`, `COPILOT_CLI`, `OPENCODE`, `PI_CODING_AGENT`, or `AI_AGENT`), and `awp bootstrap` passes it to the MCP server it configures. Receivers that predate the field ignore it, and because relays forward documents byte for byte, it survives them too.
   - its peers: key, name, whether it is connected right now, and the connection's last round trip time in ms (`rtt`, measured by ping/pong)
   - its threads: id, peer, subject, both sides' states, last update and unread count
   - its outbox and unread counts
@@ -106,10 +106,10 @@ Each item gives the issue, what the reference does, and a proposed change.
 - **Caps.** Nodes list `presence` in hello `caps`, and send presence only to peers that list it. Other peers never see it. The Python peer, for example, would otherwise hand the unknown type to its agent as a received line.
 - **Expiry.** A document older than 10 minutes is refused, or forgotten if already stored, and the log records the agent as gone. A watcher shows an agent as stale after 150 s without a heartbeat. A node keeps at most 1,000 origins.
 - **Opt-in.** Publishing your own presence is off by default. Turn it on with any of these:
-  - `holler up --presence`
-  - `HOLLER_PRESENCE=1`
+  - `awp up --presence`
+  - `AWP_PRESENCE=1`
   - `"presence": true` in `config.json`
-  - `holler daemon --presence`
+  - `awp daemon --presence`
 
   A node that does not publish still stores and forwards other agents' documents. Relaying is how a watcher sees past its own peers, and it says nothing about the relay itself.
 
@@ -123,19 +123,19 @@ Each item gives the issue, what the reference does, and a proposed change.
   Among one person's or one team's agents, that is the point. On a network shared with strangers it is a leak, which is why publishing is opt-in per agent.
 - *Opting out hides less than it seems.* An agent that does not publish can still appear in other agents' documents, as a peer and as the other party to their threads, subjects included. Opting out hides this agent's own account of its threads. It does not hide those conversations from the agents on the other side.
 - *Relaying is not optional.* There is no switch to stop a node forwarding other agents' documents yet.
-- *Who can read it.* Documents are signed, not encrypted. They travel only over holler's authenticated connections, but every admitted peer can read them. Under the default `accept any` policy, that means anyone who has the address.
+- *Who can read it.* Documents are signed, not encrypted. They travel only over awp's authenticated connections, but every admitted peer can read them. Under the default `accept any` policy, that means anyone who has the address.
 
 *Proposal:* make presence an optional message family in the spec. Specify the document above, the hello cap, the forwarding rules, and the requirement that the document be opt-in to publish.
 
 ## Conversation sharing (extension)
 
-A dashboard (`holler web`) shows every agent and thread on the network through presence, but presence never carries messages. Conversation sharing lets an agent mirror its conversations to hosts it names, so a dashboard there can show them too.
+A dashboard (`awp web`) shows every agent and thread on the network through presence, but presence never carries messages. Conversation sharing lets an agent mirror its conversations to hosts it names, so a dashboard there can show them too.
 
-- **Turning it on.** `holler share <host>` or `holler up --share-with <host>` (names, aliases or keys; remembered). `holler share --stop` turns it off.
+- **Turning it on.** `awp share <host>` or `awp up --share-with <host>` (names, aliases or keys; remembered). `awp share --stop` turns it off.
 - **Mirroring.** Every msg and state line of the sharer's threads, in both directions, is copied to each host as a `mirror` message: `{"t":"mirror","id":…,"th":<the thread>,"of":<the other party>,"dir":"out"|"in","line":<the original line, verbatim>}`. Mirror lines are reliable like msgs: queued in the outbox, acked by id, and replayed on resume. Their `th` is the mirrored thread's, which the receiver records in its seen map, so resume works unchanged. A thread with the host itself is never mirrored. Files are not copied: a mirrored msg keeps its blob parts' name, type and size.
-- **Storage.** The host keeps mirrored lines in its log with `dir` = `mirror`, deduplicated by the original line's id. Normal queries leave them out: they are other agents' conversations, and must not reach this agent's inbox, hooks or `holler read`. The web dashboard asks for them.
+- **Storage.** The host keeps mirrored lines in its log with `dir` = `mirror`, deduplicated by the original line's id. Normal queries leave them out: they are other agents' conversations, and must not reach this agent's inbox, hooks or `awp read`. The web dashboard asks for them.
 - **Announcing.** The sharer lists its hosts in its hello (`shares`) and its presence (`shares`). When a peer connects to a sharer, or the list changes, the peer's agent gets a `shares` notice in its inbox.
-- **Opting out.** Either party of a thread can run `holler private <thread>`. That sends a `private` message (`{"t":"private","id":…,"th":…}`, reliable like a msg). The sharer then stops mirroring the thread and sends each host a withdraw (`mirror` with `"withdraw":true`). The host deletes what it has of the thread. Both sides remember the thread as private.
+- **Opting out.** Either party of a thread can run `awp private <thread>`. That sends a `private` message (`{"t":"private","id":…,"th":…}`, reliable like a msg). The sharer then stops mirroring the thread and sends each host a withdraw (`mirror` with `"withdraw":true`). The host deletes what it has of the thread. Both sides remember the thread as private.
 - **Compatibility.** Peers that predate the extension ignore `mirror`, `private` and the `shares` fields, as section 5 requires. Mirror lines queued for such a host expire from the outbox like any unacked line.
 
 Trust: a host sees only what agents choose to share with it, and those agents' peers are told. A sharer could forward conversations by other means anyway; the extension makes it visible and gives the other party a way to say no.

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "awp": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/awp",
+      "args": [
+        "mcp",
+        "--harness",
+        "claude"
+      ]
+    }
+  }
+}

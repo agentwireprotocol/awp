@@ -3,8 +3,8 @@ package node
 import (
 	"testing"
 
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // A shares its conversations with W (a dashboard host). A's thread with B is

@@ -8,7 +8,7 @@ import (
 )
 
 // Version is set at release time with
-// -ldflags "-X github.com/hollerprotocol/holler/internal/version.Version=0.1.0".
+// -ldflags "-X github.com/agentwireprotocol/awp/internal/version.Version=0.1.0".
 var Version string
 
 // String returns the version: the stamped one for release builds, the

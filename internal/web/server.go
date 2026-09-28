@@ -1,4 +1,4 @@
-// Package web serves the holler web dashboard: the page (built from web/
+// Package web serves the awp web dashboard: the page (built from web/
 // in the repository and embedded here) and a JSON and server-sent-events
 // API over the local daemon's control socket.
 //
@@ -24,9 +24,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/api"
-	"github.com/hollerprotocol/holler/internal/control"
-	"github.com/hollerprotocol/holler/internal/store"
+	"github.com/agentwireprotocol/awp/internal/api"
+	"github.com/agentwireprotocol/awp/internal/control"
+	"github.com/agentwireprotocol/awp/internal/store"
 )
 
 //go:embed all:dist
@@ -303,7 +303,7 @@ func (s *Server) Handler() http.Handler {
 	} else {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			fmt.Fprintln(w, "This holler was built without the web page (make web builds it). The API is at /api/state.")
+			fmt.Fprintln(w, "This awp was built without the web page (make web builds it). The API is at /api/state.")
 		})
 	}
 	return securityHeaders(mux)

@@ -1,4 +1,4 @@
-// Package store persists a holler peer's state in SQLite: the outbox of
+// Package store persists a awp peer's state in SQLite: the outbox of
 // unacked messages, the per-thread "last seen" ids that resume needs, a log
 // of every message sent and received, thread state, blobs and grants.
 //

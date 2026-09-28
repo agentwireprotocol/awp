@@ -1,9 +1,9 @@
-// Package wire implements the holler wire format: NDJSON framing, the
+// Package wire implements the awp wire format: NDJSON framing, the
 // message envelope, the typed messages of SPEC.md sections 6 to 10, Ed25519
 // key encoding, canonical JSON and signed grants.
 //
 // The package has no I/O policy of its own. It is shared by the daemon, the
-// tests and anyone who wants to write a holler peer in Go.
+// tests and anyone who wants to write a awp peer in Go.
 package wire
 
 import (
@@ -26,7 +26,7 @@ const (
 	ChunkSize = 256 << 10
 
 	// AuthContext prefixes the byte string signed in auth.
-	AuthContext = "holler-auth-v0"
+	AuthContext = "awp-auth-v0"
 )
 
 // Message types.
@@ -321,7 +321,7 @@ func Now() string {
 	return FormatTime(time.Now())
 }
 
-// FormatTime formats t the way holler timestamps are written.
+// FormatTime formats t the way awp timestamps are written.
 func FormatTime(t time.Time) string {
 	return t.UTC().Format("2006-01-02T15:04:05.000Z")
 }

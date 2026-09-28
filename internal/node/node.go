@@ -1,4 +1,4 @@
-// Package node is the holler protocol engine: it owns the identity key,
+// Package node is the awp protocol engine: it owns the identity key,
 // the durable store, the listeners and every connection, and implements the
 // handshake, resume, acks, blobs, grants and reconnection of SPEC.md.
 package node
@@ -17,14 +17,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/internal/transport"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/internal/transport"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Config configures a Node. Zero values get the defaults from the spec.
 type Config struct {
-	// Home is the state directory (~/.holler by default in the CLI).
+	// Home is the state directory (~/.awp by default in the CLI).
 	Home string
 
 	// Name and About are sent in hello.
@@ -108,7 +108,7 @@ func (c *Config) setDefaults() {
 	}
 }
 
-// Node is a running holler peer.
+// Node is a running awp peer.
 type Node struct {
 	cfg   Config
 	share sharing
@@ -167,7 +167,7 @@ func Open(cfg Config) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	st, err := store.Open(filepath.Join(cfg.Home, "holler.db"))
+	st, err := store.Open(filepath.Join(cfg.Home, "awp.db"))
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func Open(cfg Config) (*Node, error) {
 	n.loadSharing()
 	if n.cfg.Name == "" {
 		host, _ := os.Hostname()
-		n.cfg.Name = "holler@" + host
+		n.cfg.Name = "awp@" + host
 	}
 	n.ctx, n.cancel = context.WithCancel(context.Background())
 	return n, nil

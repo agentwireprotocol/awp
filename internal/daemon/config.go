@@ -1,7 +1,7 @@
-// Package daemon runs a holler node as a long-lived local service and
+// Package daemon runs a awp node as a long-lived local service and
 // serves the control API that the CLI, the MCP server and harness hooks use.
 //
-// One daemon per holler home (~/.holler by default) owns the identity key,
+// One daemon per awp home (~/.awp by default) owns the identity key,
 // the tailcat listener and every connection, so switching harness mid-task
 // keeps the identity and the conversations (spec section 15, question 1).
 package daemon
@@ -15,12 +15,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/harness"
-	"github.com/hollerprotocol/holler/internal/node"
+	"github.com/agentwireprotocol/awp/internal/harness"
+	"github.com/agentwireprotocol/awp/internal/node"
 )
 
 // Config is the daemon configuration: home/config.json, overridden by
-// HOLLER_* environment variables, overridden by command-line flags.
+// AWP_* environment variables, overridden by command-line flags.
 type Config struct {
 	Home    string `json:"-"`
 	Name    string `json:"name,omitempty"`
@@ -42,16 +42,16 @@ type Config struct {
 	Presence        bool        `json:"presence,omitempty"`        // publish signed presence (NOTES.md)
 }
 
-// DefaultHome is $HOLLER_HOME or ~/.holler.
+// DefaultHome is $AWP_HOME or ~/.awp.
 func DefaultHome() string {
-	if h := os.Getenv("HOLLER_HOME"); h != "" {
+	if h := os.Getenv("AWP_HOME"); h != "" {
 		return h
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".holler"
+		return ".awp"
 	}
-	return filepath.Join(home, ".holler")
+	return filepath.Join(home, ".awp")
 }
 
 // LoadConfig reads home/config.json (if present) and applies environment
@@ -81,60 +81,60 @@ func LoadConfig(home string) (Config, error) {
 		}
 		return out
 	}
-	if v, ok := env("HOLLER_NAME"); ok {
+	if v, ok := env("AWP_NAME"); ok {
 		cfg.Name = v
 	}
-	if v, ok := env("HOLLER_ABOUT"); ok {
+	if v, ok := env("AWP_ABOUT"); ok {
 		cfg.About = v
 	}
-	if v, ok := env("HOLLER_SHARE_WITH"); ok {
+	if v, ok := env("AWP_SHARE_WITH"); ok {
 		cfg.ShareWith = list(v)
 	}
-	if v, ok := env("HOLLER_MODEL"); ok {
+	if v, ok := env("AWP_MODEL"); ok {
 		cfg.Model = v
 	}
-	if v, ok := env("HOLLER_HARNESS"); ok {
+	if v, ok := env("AWP_HARNESS"); ok {
 		cfg.Harness = harness.Normalize(v)
 	}
 	// Started by an agent: its harness marks the environment. This is only
 	// a fallback; the node prefers a harness set explicitly, now or before.
 	cfg.DetectedHarness = harness.Detect(os.Getenv)
-	if v, ok := env("HOLLER_LISTEN"); ok {
+	if v, ok := env("AWP_LISTEN"); ok {
 		cfg.Listen = list(v)
 	}
-	if v, ok := env("HOLLER_ADVERTISE"); ok {
+	if v, ok := env("AWP_ADVERTISE"); ok {
 		cfg.Advertise = v
 	}
-	if v, ok := env("HOLLER_SERVE"); ok {
+	if v, ok := env("AWP_SERVE"); ok {
 		cfg.Policy.Serve = list(v)
 	}
-	if v, ok := env("HOLLER_ROOT"); ok {
+	if v, ok := env("AWP_ROOT"); ok {
 		cfg.Policy.Root = v
 	}
-	if v, ok := env("HOLLER_ACCEPT"); ok {
+	if v, ok := env("AWP_ACCEPT"); ok {
 		cfg.Policy.Accept = v
 	}
-	if v, ok := env("HOLLER_ALLOW"); ok {
+	if v, ok := env("AWP_ALLOW"); ok {
 		cfg.Policy.Allow = append(cfg.Policy.Allow, list(v)...)
 	}
-	if v, ok := env("HOLLER_TRUST"); ok {
+	if v, ok := env("AWP_TRUST"); ok {
 		cfg.Policy.Trust = append(cfg.Policy.Trust, list(v)...)
 	}
-	if v, ok := env("HOLLER_PING_INTERVAL"); ok {
+	if v, ok := env("AWP_PING_INTERVAL"); ok {
 		cfg.PingInterval = v
 	}
-	if v, ok := env("HOLLER_BLOB_LIMIT"); ok {
+	if v, ok := env("AWP_BLOB_LIMIT"); ok {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			cfg.BlobLimit = n
 		}
 	}
-	if v, ok := env("HOLLER_TRACE"); ok && v != "0" {
+	if v, ok := env("AWP_TRACE"); ok && v != "0" {
 		cfg.Trace = true
 	}
-	if v, ok := env("HOLLER_PRESENCE"); ok {
+	if v, ok := env("AWP_PRESENCE"); ok {
 		cfg.Presence = v != "0" && v != "false"
 	}
-	if v, ok := env("HOLLER_ALLOW_PLAINTEXT"); ok && v != "0" {
+	if v, ok := env("AWP_ALLOW_PLAINTEXT"); ok && v != "0" {
 		cfg.Plaintext = true
 	}
 	if len(cfg.Listen) == 0 {

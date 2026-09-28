@@ -129,7 +129,7 @@ export const UI_SOUNDS: Record<UiCue, SoundDefinition> = {
   },
 }
 
-const KEY = "holler.sound"
+const KEY = "awp.sound"
 
 function readPref(): boolean {
   try {

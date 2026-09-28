@@ -1,6 +1,6 @@
-// Package harness names the agent harness a holler agent runs in (Claude
+// Package harness names the agent harness a awp agent runs in (Claude
 // Code, Codex, ...), so dashboards can show which is which. The IDs are the
-// ones holler bootstrap uses.
+// ones awp bootstrap uses.
 package harness
 
 import "strings"
@@ -36,7 +36,7 @@ var aliases = map[string]string{
 }
 
 // Normalize returns the ID for a harness name, or "" if it is not one
-// holler knows.
+// awp knows.
 func Normalize(s string) string {
 	return aliases[strings.ToLower(strings.TrimSpace(s))]
 }

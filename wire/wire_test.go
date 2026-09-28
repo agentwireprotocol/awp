@@ -104,7 +104,7 @@ func TestAuthSignature(t *testing.T) {
 		t.Fatal("verified with wrong key")
 	}
 	payload := AuthPayload(helloA, helloB)
-	want := "holler-auth-v0\x00" + string(helloA) + "\x00" + string(helloB)
+	want := "awp-auth-v0\x00" + string(helloA) + "\x00" + string(helloB)
 	if string(payload) != want {
 		t.Fatalf("payload = %q", payload)
 	}

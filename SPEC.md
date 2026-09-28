@@ -1,4 +1,4 @@
-# holler: a peer-to-peer agent messaging protocol
+# awp: a peer-to-peer agent messaging protocol
 
 Status: draft 1, 2026-09-25.
 
@@ -13,7 +13,7 @@ It is the wrong shape for the case we care about: a coding agent on a laptop or 
 3. It has no connectivity story. It assumes reachability. Reachability is the hard part when both ends are behind NAT in ephemeral VMs.
 4. It is not cheap, free or easy. Six SDKs and three transport bindings is a lot of surface for "send a message to that agent over there".
 
-holler takes the opposite bets, borrowed from tailcat:
+awp takes the opposite bets, borrowed from tailcat:
 
 - The transport solves connectivity. One agent runs `listen`, gets a shareable address, the other runs `connect`. No accounts, no DNS, no certs.
 - Once connected, both sides are equal. Either can start a thread, send a message or ask for work.
@@ -53,7 +53,7 @@ Non-goals
 Terms
 
 - Peer. An agent process holding an Ed25519 keypair. Identified by the public key.
-- Address. The tailcat string that reaches a listening peer. Opaque to holler. Possession of the address gets you as far as the hello handshake and nothing more.
+- Address. The tailcat string that reaches a listening peer. Opaque to awp. Possession of the address gets you as far as the hello handshake and nothing more.
 - Connection. One tailcat (or other reliable ordered byte stream) between two peers, carrying NDJSON both ways.
 - Thread. A named sequence of messages between the two peers. Threads are the "task" abstraction. A thread has an id, a subject and a soft state.
 - Message. One turn in a thread, made of parts.
@@ -66,7 +66,7 @@ Terms
 
 - The listening peer runs `tailcat listen` and obtains an address. It shares the address out of band: CLI flag, environment variable, chat message, a line in a task prompt.
 - The connecting peer runs `tailcat connect <address>` and obtains a bidirectional byte stream.
-- holler runs over that stream. It does not care which side listened.
+- awp runs over that stream. It does not care which side listened.
 
 4.2 Other bindings
 
@@ -74,9 +74,9 @@ Any reliable, ordered, bidirectional byte stream is a valid binding: a Unix sock
 
 4.3 Reconnection and sleep
 
-Connections drop. Sandboxes sleep, laptops close, tailcat links time out. holler treats this as the normal case, not an error. Resume is mandatory in v0; every peer implements it.
+Connections drop. Sandboxes sleep, laptops close, tailcat links time out. awp treats this as the normal case, not an error. Resume is mandatory in v0; every peer implements it.
 
-- Each peer persists an outbox of sent messages and a per-thread "last seen" id to disk (`~/.holler/`). Memory-only state is not enough, because the process may be killed with the sandbox.
+- Each peer persists an outbox of sent messages and a per-thread "last seen" id to disk (`~/.awp/`). Memory-only state is not enough, because the process may be killed with the sandbox.
 - Either peer may reconnect using the same keys. Identity is the key, not the connection or the address.
 - After the handshake, both sides send `resume` (section 9.5). Each side replays what the other has not seen.
 - Threads survive reconnection. A `working` thread on a sleeping sandbox is still `working` when it wakes.
@@ -151,7 +151,7 @@ B → A  resume
 `sig` is the Ed25519 signature over the byte string:
 
 ```
-"holler-auth-v0" || 0x00 || my_hello_line || 0x00 || peer_hello_line
+"awp-auth-v0" || 0x00 || my_hello_line || 0x00 || peer_hello_line
 ```
 
 where the hello lines are the exact bytes received or sent, without the trailing newline. Each side verifies the other's signature with the key from that side's `hello`. If verification fails, send `err` code `auth` and close.
@@ -284,7 +284,7 @@ Anything beyond that is named by a capability string and requires a grant. Capab
 
 | capability      | meaning |
 |-----------------|---------|
-| `exec`          | may ask this peer to run commands, via a `msg` with a `data` part of mime `application/vnd.holler.exec+json` |
+| `exec`          | may ask this peer to run commands, via a `msg` with a `data` part of mime `application/vnd.awp.exec+json` |
 | `fs:read`       | may ask for file contents |
 | `fs:write`      | may ask for file writes |
 | `introduce`     | may hand this peer's address and a derived grant to a third peer |
@@ -380,12 +380,12 @@ Same pair. B's sprite sleeps while working. A keeps retrying and B wakes on conn
 - `auth` binds both hello lines, so an attacker cannot replay a hello or swap capabilities after the fact.
 - Grants have `exp`. Issuers SHOULD keep them short, an hour is plenty for a task.
 - `exec` and `fs:write` are remote code execution. A peer SHOULD require an explicit grant for them even from keys it otherwise trusts, and SHOULD log every such request.
-- Over non-tailcat bindings there is no transport encryption. Do not run holler over plaintext TCP across the internet.
+- Over non-tailcat bindings there is no transport encryption. Do not run awp over plaintext TCP across the internet.
 - Prompt injection travels in `text` parts. That is the receiving agent's problem, same as any input. The protocol marks nothing as trusted.
 
 ## 14. Comparison to A2A
 
-| | A2A | holler |
+| | A2A | awp |
 |---|---|---|
 | Roles | client and server | symmetric peers |
 | Reachability | assumes a URL | tailcat address, no infra |
@@ -405,40 +405,40 @@ The protocol is harness-neutral. Agents get it through one plugin packaged to th
 16.1 What the plugin contains
 
 ```
-holler-plugin/
+awp-plugin/
   plugin.json
   skills/
-    holler/SKILL.md          when and how to holler at another agent
+    awp/SKILL.md          when and how to awp at another agent
   bin/
-    holler                   the peer: listen, connect, send, tail
+    awp                   the peer: listen, connect, send, tail
   mcp/
-    holler-mcp.json          optional MCP server wrapping the same binary
+    awp-mcp.json          optional MCP server wrapping the same binary
 ```
 
-- The binary `holler` is the reference peer. It owns the keypair, runs tailcat, speaks NDJSON, and exposes a tiny local CLI:
-  - `holler listen` prints the address, runs until killed, writes inbound messages to stdout as NDJSON and to a local inbox.
-  - `holler connect <address>` opens a connection and keeps it in the background.
-  - `holler send <peer> [--thread t] <text>` sends a `msg`.
-  - `holler tail [--thread t]` streams inbound messages.
-  - `holler grant <peer-key> <caps...> --ttl 1h` mints a grant.
+- The binary `awp` is the reference peer. It owns the keypair, runs tailcat, speaks NDJSON, and exposes a tiny local CLI:
+  - `awp listen` prints the address, runs until killed, writes inbound messages to stdout as NDJSON and to a local inbox.
+  - `awp connect <address>` opens a connection and keeps it in the background.
+  - `awp send <peer> [--thread t] <text>` sends a `msg`.
+  - `awp tail [--thread t]` streams inbound messages.
+  - `awp grant <peer-key> <caps...> --ttl 1h` mints a grant.
 - The skill teaches the model the conventions in section 11: open a thread with a task-like subject, watch state, attach results as code or blob. The skill is the only harness-visible surface a model needs; the CLI does the rest.
-- The MCP server is for harnesses that prefer tools to shell. It exposes `holler_listen`, `holler_connect`, `holler_send`, `holler_read`, `holler_grant`, backed by the same binary, so behavior is identical either way.
+- The MCP server is for harnesses that prefer tools to shell. It exposes `awp_listen`, `awp_connect`, `awp_send`, `awp_read`, `awp_grant`, backed by the same binary, so behavior is identical either way.
 
 16.2 Why a binary plus a skill, not a per-harness integration
 
 - Harnesses differ in how they surface skills, tools and hooks. A binary with a stable CLI is the lowest common denominator every harness can call.
-- Keys, inbox and outbox live in one place per machine (`~/.holler/`), so switching harness mid-task does not lose the connection or the identity.
-- The Agent Plugins spec covers skills and MCP servers today. Hooks, if a harness supports them, can auto-run `holler tail` on session start so inbound messages surface without the model polling.
+- Keys, inbox and outbox live in one place per machine (`~/.awp/`), so switching harness mid-task does not lose the connection or the identity.
+- The Agent Plugins spec covers skills and MCP servers today. Hooks, if a harness supports them, can auto-run `awp tail` on session start so inbound messages surface without the model polling.
 
 16.3 Open plugin questions
 
 1. Does the peer run as a long-lived daemon that harness sessions attach to, or per session? Daemon fits the "switch harness mid-task" story and is required for the awake side to keep retrying a sleeping peer with no session running.
-2. How does an inbound message reach the model's context in a harness with no hook support? Options: the skill tells the model to `holler tail --once` at natural checkpoints, or the MCP server pushes a notification where MCP supports it.
+2. How does an inbound message reach the model's context in a harness with no hook support? Options: the skill tells the model to `awp tail --once` at natural checkpoints, or the MCP server pushes a notification where MCP supports it.
 3. Should the plugin ship tailcat, or require it on PATH?
 
 ## 16. Open questions
 
-1. Resolved: name is `holler`.
+1. Resolved: name is `awp`.
 2. Resolved: resume is mandatory. Remaining sub-question: how long should the outbox be retained for a peer that never comes back? Proposal: until the thread is `closed` or 7 days.
 3. Should blobs be in-band (this draft) or should the protocol point at a second tailcat address for bulk transfer?
 4. Multi-party. Is a hub peer that relays between many peers a good enough answer, or do we want native rooms?

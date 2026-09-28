@@ -3,7 +3,7 @@ package api
 import (
 	"time"
 
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Network is the "presence" call's answer: this agent and every agent heard

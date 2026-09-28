@@ -86,7 +86,7 @@
   }
 }
 
-/* ── holler ─────────────────────────────────────────── */
+/* ── awp ─────────────────────────────────────────── */
 
 /* Agent orbs: soft gradient spheres (see Orb.tsx). The swirl layer turns
  * slowly; working agents breathe. */
@@ -208,7 +208,7 @@
   mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
 }
 
-/* Agents' marble avatars (components/holler/Orb.tsx). */
+/* Agents' marble avatars (components/awp/Orb.tsx). */
 .agent-avatar {
   border-radius: 9999px;
   box-shadow: 0 1px 2px oklch(0 0 0 / 0.1), inset 0 0 0 1px oklch(0 0 0 / 0.04);

@@ -1,4 +1,4 @@
-// Agent harness IDs, as the Go side (internal/harness) and holler bootstrap
+// Agent harness IDs, as the Go side (internal/harness) and awp bootstrap
 // name them, with their display names.
 const NAMES: Record<string, string> = {
   claude: "Claude Code",

@@ -16,19 +16,19 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Result mime types for served requests (PROFILE.md).
 const (
-	MimeExecResult    = "application/vnd.holler.exec-result+json"
-	MimeFSReadResult  = "application/vnd.holler.fs-read-result+json"
-	MimeFSWriteResult = "application/vnd.holler.fs-write-result+json"
+	MimeExecResult    = "application/vnd.awp.exec-result+json"
+	MimeFSReadResult  = "application/vnd.awp.fs-read-result+json"
+	MimeFSWriteResult = "application/vnd.awp.fs-write-result+json"
 )
 
 const inlineLimit = 64 << 10
 
-// ExecRequest is the data of an application/vnd.holler.exec+json part.
+// ExecRequest is the data of an application/vnd.awp.exec+json part.
 type ExecRequest struct {
 	Cmd     json.RawMessage   `json:"cmd"` // ["argv", ...] or "shell string"
 	Cwd     string            `json:"cwd,omitempty"`
@@ -37,14 +37,14 @@ type ExecRequest struct {
 	Stdin   string            `json:"stdin,omitempty"`
 }
 
-// FSReadRequest is the data of an application/vnd.holler.fs-read+json part.
+// FSReadRequest is the data of an application/vnd.awp.fs-read+json part.
 type FSReadRequest struct {
 	Path   string `json:"path"`
 	Offset int64  `json:"offset,omitempty"`
 	Length int64  `json:"length,omitempty"`
 }
 
-// FSWriteRequest is the data of an application/vnd.holler.fs-write+json part.
+// FSWriteRequest is the data of an application/vnd.awp.fs-write+json part.
 type FSWriteRequest struct {
 	Path     string `json:"path"`
 	Content  string `json:"content"`

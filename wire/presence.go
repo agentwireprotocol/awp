@@ -42,7 +42,7 @@ type Presence struct {
 	Model   string   `json:"model,omitempty"`   // the model the agent runs on, as it reports it
 	Host    string   `json:"host,omitempty"`    // the hostname of the machine it runs on
 	Shares  []string `json:"shares,omitempty"`  // keys of the hosts it mirrors its conversations to
-	// Active is when the agent last did something through holler, to 30
+	// Active is when the agent last did something through awp, to 30
 	// seconds; Waiting says it is blocked waiting for a message.
 	Active  string           `json:"active,omitempty"`
 	Waiting bool             `json:"waiting,omitempty"`

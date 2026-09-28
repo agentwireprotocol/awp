@@ -6,7 +6,7 @@ version=${1:?usage: scripts/check-version.sh VERSION}
 version=${version#v}
 root=$(cd "$(dirname "$0")/.." && pwd)
 status=0
-for f in plugin/holler/plugin.json plugin/holler/.claude-plugin/plugin.json; do
+for f in plugin/awp/plugin.json plugin/awp/.claude-plugin/plugin.json; do
   v=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' "$root/$f")
   if [ "$v" != "$version" ]; then
     echo "$f says version $v, the release is $version" >&2

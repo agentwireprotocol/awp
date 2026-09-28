@@ -16,10 +16,10 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/api"
-	"github.com/hollerprotocol/holler/internal/control"
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/api"
+	"github.com/agentwireprotocol/awp/internal/control"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 func testKey(b byte) string {
@@ -42,7 +42,7 @@ func network(now time.Time, bossState string) (*api.Status, []*store.Thread, *ap
 	ts := wire.FormatTime(now.Add(-time.Minute))
 	later := wire.FormatTime(now.Add(-30 * time.Second))
 	st := &api.Status{Key: hostKey, Short: wire.ShortKey(hostKey), Name: "ops@laptop", Version: "0.2.0", Presence: true,
-		About: "holler-go 0.2.0, key fingerprint SHA256:x",
+		About: "awp-go 0.2.0, key fingerprint SHA256:x",
 		Peers: []api.PeerView{
 			{Key: workerKey, Short: wire.ShortKey(workerKey), Name: "claude-code@worker", Connected: true, LastSeen: now, Via: "tailcat:tcAAA", RTTms: 42},
 		}}
@@ -281,7 +281,7 @@ func startServer(t *testing.T) (*fakeDaemon, *httptest.Server) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go control.Serve(ctx, home, fd)
-	srv := &Server{C: &control.Client{Home: home}, Assets: fstest.MapFS{"index.html": {Data: []byte("<h1>holler</h1>")}, "assets/app.js": {Data: []byte("x")}}}
+	srv := &Server{C: &control.Client{Home: home}, Assets: fstest.MapFS{"index.html": {Data: []byte("<h1>awp</h1>")}, "assets/app.js": {Data: []byte("x")}}}
 	for !srv.C.Running() {
 		time.Sleep(10 * time.Millisecond)
 	}

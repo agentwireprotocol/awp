@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // testNode starts a node listening on a Unix socket in its own home.
@@ -506,7 +506,7 @@ func TestGrantAndServedExec(t *testing.T) {
 	b := testNode(t, "b", func(c *Config) { c.Policy.Serve = []string{CapExec, CapFSRead}; c.Policy.Root = root })
 	os.WriteFile(filepath.Join(root, "notes.txt"), []byte("hello from b"), 0o644)
 	connect(t, a, b)
-	execReq := wire.Part{K: wire.PartData, Mime: "application/vnd.holler.exec+json", Data: json.RawMessage(`{"cmd":["sh","-c","echo out; echo err >&2; exit 3"]}`)}
+	execReq := wire.Part{K: wire.PartData, Mime: "application/vnd.awp.exec+json", Data: json.RawMessage(`{"cmd":["sh","-c","echo out; echo err >&2; exit 3"]}`)}
 
 	// Without a grant: forbidden, and not executed.
 	res, err := a.Send(SendRequest{Peer: b.Key(), Parts: []wire.Part{execReq}})
@@ -556,7 +556,7 @@ func TestGrantAndServedExec(t *testing.T) {
 	b.Grant(a.Key(), []string{CapFSRead}, time.Hour)
 	read := func(path string) map[string]any {
 		before := len(received(t, a, b.Key(), "msg"))
-		a.Send(SendRequest{Peer: b.Key(), Th: res.Th, Parts: []wire.Part{{K: wire.PartData, Mime: "application/vnd.holler.fs-read+json", Data: json.RawMessage(fmt.Sprintf(`{"path":%q}`, path))}}})
+		a.Send(SendRequest{Peer: b.Key(), Th: res.Th, Parts: []wire.Part{{K: wire.PartData, Mime: "application/vnd.awp.fs-read+json", Data: json.RawMessage(fmt.Sprintf(`{"path":%q}`, path))}}})
 		var out map[string]any
 		waitFor(t, a, "fs-read result", func() bool {
 			msgs := received(t, a, b.Key(), "msg")

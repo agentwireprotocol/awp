@@ -1,4 +1,4 @@
-// Package api defines the types exchanged between the holler daemon and its
+// Package api defines the types exchanged between the awp daemon and its
 // local clients over the control socket.
 package api
 
@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Status describes the running daemon.
@@ -19,8 +19,8 @@ type Status struct {
 	Harness     string     `json:"harness,omitempty"`    // the agent harness this daemon runs in
 	ShareWith   []PeerRef  `json:"share_with,omitempty"` // hosts this agent mirrors its conversations to
 	Model       string     `json:"model,omitempty"`      // the model the agent runs on, as last reported
-	Active      *time.Time `json:"active,omitempty"`     // when the agent last acted through holler
-	Waiting     bool       `json:"waiting,omitempty"`    // blocked in holler wait now
+	Active      *time.Time `json:"active,omitempty"`     // when the agent last acted through awp
+	Waiting     bool       `json:"waiting,omitempty"`    // blocked in awp wait now
 	Host        string     `json:"host,omitempty"`       // this machine's hostname
 	Fingerprint string     `json:"fingerprint"`
 	Version     string     `json:"version"`

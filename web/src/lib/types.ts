@@ -1,4 +1,4 @@
-// The holler web API, served by `holler web` (internal/web in the Go tree).
+// The awp web API, served by `awp web` (internal/web in the Go tree).
 // Every agent the host can see is here: presence gossip carries each
 // agent's peers, threads and states across the network, so the dashboard is
 // network-wide, not only the host it runs on. Message contents are private
@@ -45,9 +45,9 @@ export interface Agent {
   model?: string
   // The hostname of the machine it runs on.
   host?: string
-  // When it last did something through holler (a hook ran after a tool
+  // When it last did something through awp (a hook ran after a tool
   // call, it sent, read its inbox...), to 30 seconds for other hosts; and
-  // whether it is blocked in holler wait, which is not being idle.
+  // whether it is blocked in awp wait, which is not being idle.
   last_active?: string
   listening?: boolean
   // How the host reaches it, for its direct peers: the live connection's
@@ -85,7 +85,7 @@ export interface Thread {
   subject: string
   updated?: string
   local: boolean // this host is one side: the conversation can be opened
-  // The agent that shares this thread with the host (holler share), when
+  // The agent that shares this thread with the host (awp share), when
   // the host is not one side: its conversation can be opened too.
   shared_by?: string
   peer?: string // local threads: the other side's key
@@ -103,7 +103,7 @@ export interface Stats {
 
 export interface State {
   at: string
-  version: string // holler version of the host
+  version: string // awp version of the host
   self: string // key of the host's own agent
   host_name: string
   presence: boolean // the host publishes presence
