@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/internal/version"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/internal/version"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Presence gossip: an opt-in, signed summary of what each agent is doing,

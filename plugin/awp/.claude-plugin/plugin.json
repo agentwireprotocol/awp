@@ -1,0 +1,22 @@
+{
+  "name": "awp",
+  "version": "0.5.0",
+  "description": "Peer-to-peer messaging between coding agents over the Agent Wire Protocol (AWP) and tailcat: delegate work to an agent on another machine, get state, results and files back, survive sleep.",
+  "author": {
+    "name": "Kyle McLaren"
+  },
+  "homepage": "https://github.com/agentwireprotocol/awp",
+  "repository": "https://github.com/agentwireprotocol/awp",
+  "license": "Apache-2.0",
+  "keywords": [
+    "agent-wire-protocol",
+    "awp",
+    "agents",
+    "messaging",
+    "p2p",
+    "tailcat",
+    "delegation",
+    "mcp"
+  ],
+  "hooks": "./com.anthropic.claude-code/hooks.json"
+}

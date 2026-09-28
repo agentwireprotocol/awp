@@ -146,8 +146,8 @@ func (o *object) pretty() ([]byte, error) {
 }
 
 // editJSON loads the JSON object at path (a missing file is empty), lets
-// edit change it, and writes it back if it changed. The first time holler
-// edits a file it keeps a copy next to it (file.holler-backup).
+// edit change it, and writes it back if it changed. The first time awp
+// edits a file it keeps a copy next to it (file.awp-backup).
 func editJSON(path string, dryRun bool, edit func(*object) error) (changed bool, err error) {
 	before, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -174,7 +174,7 @@ func editJSON(path string, dryRun bool, edit func(*object) error) (changed bool,
 		return false, err
 	}
 	if len(before) > 0 {
-		backup := path + ".holler-backup"
+		backup := path + ".awp-backup"
 		if _, err := os.Stat(backup); errors.Is(err, os.ErrNotExist) {
 			if err := os.WriteFile(backup, before, 0o600); err != nil {
 				return false, err
@@ -185,7 +185,7 @@ func editJSON(path string, dryRun bool, edit func(*object) error) (changed bool,
 	if fi, err := os.Stat(path); err == nil {
 		mode = fi.Mode().Perm()
 	}
-	tmp := path + ".holler-tmp"
+	tmp := path + ".awp-tmp"
 	if err := os.WriteFile(tmp, after, mode); err != nil {
 		return false, err
 	}
@@ -200,11 +200,11 @@ func sameJSON(a, b []byte) bool {
 	return bytes.Equal(x.Bytes(), y.Bytes())
 }
 
-// hollerHook matches the hook commands bootstrap writes, whatever the
+// awpHook matches the hook commands bootstrap writes, whatever the
 // binary is called: "<bin> hook inbox --format cursor" and the like.
-var hollerHook = regexp.MustCompile(`\bhook (session-start|inbox|stop) --format [a-z]+\b`)
+var awpHook = regexp.MustCompile(`\bhook (session-start|inbox|stop) --format [a-z]+\b`)
 
-// isHollerHook reports whether a hook command was written by bootstrap.
-func isHollerHook(cmd string) bool {
-	return hollerHook.MatchString(cmd)
+// isAWPHook reports whether a hook command was written by bootstrap.
+func isAWPHook(cmd string) bool {
+	return awpHook.MatchString(cmd)
 }

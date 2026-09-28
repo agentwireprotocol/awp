@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/api"
-	"github.com/hollerprotocol/holler/internal/control"
-	"github.com/hollerprotocol/holler/internal/daemon"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/api"
+	"github.com/agentwireprotocol/awp/internal/control"
+	"github.com/agentwireprotocol/awp/internal/daemon"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // startDaemon runs a daemon with its own home, listening on a Unix socket.
@@ -117,18 +117,18 @@ func TestToolsEndToEnd(t *testing.T) {
 	for _, tl := range tools {
 		names = append(names, tl.(map[string]any)["name"].(string))
 	}
-	want := "holler_listen holler_connect holler_send holler_read holler_state holler_grant holler_status"
+	want := "awp_listen awp_connect awp_send awp_read awp_state awp_grant awp_status"
 	if strings.Join(names, " ") != want {
 		t.Fatalf("tools %v", names)
 	}
 
-	if out := s.tool("holler_listen", map[string]any{}); !strings.Contains(out, "You are alice") {
+	if out := s.tool("awp_listen", map[string]any{}); !strings.Contains(out, "You are alice") {
 		t.Fatalf("listen: %s", out)
 	}
-	if out := s.tool("holler_connect", map[string]any{"address": bAddr}); !strings.Contains(out, "Connected to bob") {
+	if out := s.tool("awp_connect", map[string]any{"address": bAddr}); !strings.Contains(out, "Connected to bob") {
 		t.Fatalf("connect: %s", out)
 	}
-	out := s.tool("holler_send", map[string]any{"peer": "bob", "subject": "Port the auth middleware", "text": "Can you run the suite?", "data": map[string]any{"branch": "kyle/refactor"}, "wait_ack_seconds": 5})
+	out := s.tool("awp_send", map[string]any{"peer": "bob", "subject": "Port the auth middleware", "text": "Can you run the suite?", "data": map[string]any{"branch": "kyle/refactor"}, "wait_ack_seconds": 5})
 	if !strings.Contains(out, "acknowledged") {
 		t.Fatalf("send: %s", out)
 	}
@@ -142,21 +142,21 @@ func TestToolsEndToEnd(t *testing.T) {
 	b.Call(context.Background(), "state", api.StateParams{Th: th, State: "working", Note: "on it"}, nil)
 	b.Call(context.Background(), "send", api.SendParams{Th: th, Parts: []wire.Part{{K: wire.PartText, Text: "3 of 42 failing"}}}, nil)
 
-	out = s.tool("holler_read", map[string]any{"thread": th, "wait_seconds": 5})
+	out = s.tool("awp_read", map[string]any{"thread": th, "wait_seconds": 5})
 	if !strings.Contains(out, "untrusted") || !(strings.Contains(out, "3 of 42 failing") || strings.Contains(out, "state working")) {
 		t.Fatalf("read: %s", out)
 	}
-	s.tool("holler_state", map[string]any{"thread": th, "state": "waiting", "note": "need logs"})
-	status := s.tool("holler_status", map[string]any{})
+	s.tool("awp_state", map[string]any{"thread": th, "state": "waiting", "note": "need logs"})
+	status := s.tool("awp_status", map[string]any{})
 	if !strings.Contains(status, "bob") || !strings.Contains(status, th) {
 		t.Fatalf("status: %s", status)
 	}
-	if out := s.tool("holler_grant", map[string]any{"peer": "bob", "caps": []string{"fs:read"}, "ttl": "10m"}); !strings.Contains(out, "Granted [fs:read]") {
+	if out := s.tool("awp_grant", map[string]any{"peer": "bob", "caps": []string{"fs:read"}, "ttl": "10m"}); !strings.Contains(out, "Granted [fs:read]") {
 		t.Fatalf("grant: %s", out)
 	}
 
 	// Errors come back as tool errors, not protocol errors.
-	res := s.request("tools/call", map[string]any{"name": "holler_send", "arguments": map[string]any{"peer": "nobody", "text": "x"}})
+	res := s.request("tools/call", map[string]any{"name": "awp_send", "arguments": map[string]any{"peer": "nobody", "text": "x"}})
 	if res["isError"] != true {
 		t.Fatalf("expected a tool error: %v", res)
 	}
@@ -168,7 +168,7 @@ func TestChannelPush(t *testing.T) {
 	s := newSession(t, a, false)
 	// A client that registers for channel events gets pushes.
 	s.request("initialize", map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"experimental": map[string]any{"claude/channel": map[string]any{}}}})
-	s.tool("holler_connect", map[string]any{"address": bAddr})
+	s.tool("awp_connect", map[string]any{"address": bAddr})
 	var peers []api.PeerView
 	b.Call(context.Background(), "peers", nil, &peers)
 	if len(peers) != 1 {

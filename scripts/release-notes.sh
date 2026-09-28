@@ -18,24 +18,24 @@ sed "s/@V@/$version/g" <<'NOTES'
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hollerprotocol/holler/main/install.sh | HOLLER_VERSION=@V@ sh
+curl -fsSL https://raw.githubusercontent.com/agentwireprotocol/awp/main/install.sh | AWP_VERSION=@V@ sh
 ```
 
-The script picks the archive for your platform, checks it against `SHA256SUMS`, installs `holler` to `~/.local/bin` and offers to run `holler bootstrap`. Or by hand (`linux` or `darwin`, `amd64` or `arm64`):
+The script picks the archive for your platform, checks it against `SHA256SUMS`, installs `awp` to `~/.local/bin` and offers to run `awp bootstrap`. Or by hand (`linux` or `darwin`, `amd64` or `arm64`):
 
 ```sh
-curl -fsSLO https://github.com/hollerprotocol/holler/releases/download/v@V@/holler_@V@_linux_amd64.tar.gz
-curl -fsSLO https://github.com/hollerprotocol/holler/releases/download/v@V@/SHA256SUMS
+curl -fsSLO https://github.com/agentwireprotocol/awp/releases/download/v@V@/awp_@V@_linux_amd64.tar.gz
+curl -fsSLO https://github.com/agentwireprotocol/awp/releases/download/v@V@/SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS
-tar -xzf holler_@V@_linux_amd64.tar.gz holler
-install holler ~/.local/bin/          # anywhere on PATH
+tar -xzf awp_@V@_linux_amd64.tar.gz awp
+install awp ~/.local/bin/          # anywhere on PATH
 ```
 
 The agent plugin, with binaries for all four platforms:
 
 ```sh
-curl -fsSLO https://github.com/hollerprotocol/holler/releases/download/v@V@/holler-plugin_@V@.tar.gz
-tar -xzf holler-plugin_@V@.tar.gz     # creates ./holler
-claude --plugin-dir ./holler
+curl -fsSLO https://github.com/agentwireprotocol/awp/releases/download/v@V@/awp-plugin_@V@.tar.gz
+tar -xzf awp-plugin_@V@.tar.gz     # creates ./awp
+claude --plugin-dir ./awp
 ```
 NOTES

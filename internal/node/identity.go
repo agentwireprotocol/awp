@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // identityFile is the on-disk form of the long-term Ed25519 key.

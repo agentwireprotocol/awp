@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hollerprotocol/holler/internal/api"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/api"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // A key prefix can start with -, which a shell would read as flags: the
@@ -14,8 +14,8 @@ import (
 func TestIntroduceHint(t *testing.T) {
 	key := "ed25519:-EdZIWymh9AbCdEfGhIjKlMnOpQrStUvWxYz0123456"
 	for _, c := range []struct{ name, want string }{
-		{"qa-lead@sprite", "connect with: holler connect qa-lead@sprite\n"},
-		{"", "connect with: holler connect -- -EdZIWymh9\n"},
+		{"qa-lead@sprite", "connect with: awp connect qa-lead@sprite\n"},
+		{"", "connect with: awp connect -- -EdZIWymh9\n"},
 	} {
 		msg, _ := json.Marshal(wire.Introduce{Peer: wire.IntroPeer{Key: key, Name: c.name}})
 		got := Event(api.Event{Type: wire.TIntroduce, Dir: "in", PeerName: "boss", Msg: msg}, Options{})

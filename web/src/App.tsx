@@ -2,25 +2,25 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import { Dialog } from "@base-ui/react/dialog"
 import { Menu, Search } from "lucide-react"
 
-import { AgentList } from "@/components/holler/AgentList"
-import { ActivityFeed } from "@/components/holler/ActivityFeed"
-import { EmptyNetwork } from "@/components/holler/EmptyNetwork"
-import { Connection, Wordmark } from "@/components/holler/Header"
-import { Loading } from "@/components/holler/Loading"
-import { Sidebar } from "@/components/holler/Sidebar"
-import { NetworkGraph } from "@/components/holler/NetworkGraph"
-import { Palette } from "@/components/holler/Palette"
-import { Sheet } from "@/components/holler/Sheet"
-import { Stats } from "@/components/holler/Stats"
-import { ThreadList } from "@/components/holler/ThreadList"
+import { AgentList } from "@/components/awp/AgentList"
+import { ActivityFeed } from "@/components/awp/ActivityFeed"
+import { EmptyNetwork } from "@/components/awp/EmptyNetwork"
+import { Connection, Wordmark } from "@/components/awp/Header"
+import { Loading } from "@/components/awp/Loading"
+import { Sidebar } from "@/components/awp/Sidebar"
+import { NetworkGraph } from "@/components/awp/NetworkGraph"
+import { Palette } from "@/components/awp/Palette"
+import { Sheet } from "@/components/awp/Sheet"
+import { Stats } from "@/components/awp/Stats"
+import { ThreadList } from "@/components/awp/ThreadList"
 import { agentName, plural } from "@/lib/format"
 import { playFor, usePanelSound } from "@/lib/sound"
 import { useView } from "@/lib/route"
-import { getStore, useHoller } from "@/lib/store"
+import { getStore, useAWP } from "@/lib/store"
 import type { Activity, State, Thread } from "@/lib/types"
 
-const AgentDetail = lazy(() => import("@/components/holler/AgentDetail").then((m) => ({ default: m.AgentDetail })))
-const ThreadDetail = lazy(() => import("@/components/holler/ThreadDetail").then((m) => ({ default: m.ThreadDetail })))
+const AgentDetail = lazy(() => import("@/components/awp/AgentDetail").then((m) => ({ default: m.AgentDetail })))
+const ThreadDetail = lazy(() => import("@/components/awp/ThreadDetail").then((m) => ({ default: m.ThreadDetail })))
 
 type Selection = { kind: "agent"; key: string } | { kind: "thread"; id: string; fallback?: Thread } | undefined
 
@@ -125,14 +125,14 @@ function threadFor(state: State | undefined, a: Activity): Thread | undefined {
 }
 
 export function App() {
-  const { state, activity, conn, error } = useHoller()
+  const { state, activity, conn, error } = useAWP()
   const [sel, setSel] = useState<Selection>()
   const [palette, setPalette] = useState(false)
   const [view, go] = useView()
   const [drawer, setDrawer] = useState(false)
   const [collapsed, setCollapsedState] = useState(() => {
     try {
-      return localStorage.getItem("holler.sidebar") === "collapsed"
+      return localStorage.getItem("awp.sidebar") === "collapsed"
     } catch {
       return false
     }
@@ -140,7 +140,7 @@ export function App() {
   const setCollapsed = (c: boolean) => {
     setCollapsedState(c)
     try {
-      localStorage.setItem("holler.sidebar", c ? "collapsed" : "open")
+      localStorage.setItem("awp.sidebar", c ? "collapsed" : "open")
     } catch {
       // private mode: the choice lasts this visit
     }
@@ -166,7 +166,7 @@ export function App() {
   useEffect(() => {
     if (!state) return
     const w = state.stats.working
-    document.title = w ? `(${w}) holler · ${state.host_name}` : `holler · ${state.host_name}`
+    document.title = w ? `(${w}) awp · ${state.host_name}` : `awp · ${state.host_name}`
   }, [state])
 
   const openAgent = (key: string) => setSel({ kind: "agent", key })
@@ -189,10 +189,10 @@ export function App() {
         <Wordmark />
         {error ? (
           <div className="max-w-sm text-center">
-            <p className="text-[14px] font-medium text-ink">Can't reach the holler daemon</p>
+            <p className="text-[14px] font-medium text-ink">Can't reach the awp daemon</p>
             <p className="mt-1 text-[12.5px] text-ink-3">{error}</p>
             <p className="mt-3 text-[12.5px] text-ink-2">
-              Is it running? Start it with <code className="font-mono">holler up</code>. Retrying…
+              Is it running? Start it with <code className="font-mono">awp up</code>. Retrying…
             </p>
           </div>
         ) : (
@@ -325,7 +325,7 @@ export function App() {
           )}
 
           <footer className="mt-10 flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-3">
-            <span>holler {state.version}</span>
+            <span>awp {state.version}</span>
             <span>
               Press <kbd className="rounded-[5px] bg-field px-1 font-mono shadow-hairline">/</kbd> to search ·{" "}
               <kbd className="rounded-[5px] bg-field px-1 font-mono shadow-hairline">d</kbd> for dark mode

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Conversation sharing (wire/mirror.go): a node configured to share its

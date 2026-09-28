@@ -1,9 +1,9 @@
 /bin/
 /dist/
-/plugin/holler/libexec/holler-*
+/plugin/awp/libexec/awp-*
 __pycache__/
 *.pyc
-/holler
+/awp
 /.claude/
 /internal/web/dist/*
 !/internal/web/dist/README

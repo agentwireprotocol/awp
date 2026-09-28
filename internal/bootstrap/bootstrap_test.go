@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const bin = "/opt/holler/bin/holler"
+const bin = "/opt/awp/bin/awp"
 
 // testEnv is a fake machine: a temporary home, the given executables "on
 // PATH", and a runner that records harness CLI calls.
@@ -75,16 +75,16 @@ func TestClaudePlugin(t *testing.T) {
 	if _, err := h.Install(ctx, e); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(e.Home, ".claude/skills/holler")
-	for _, f := range []string{".claude-plugin/plugin.json", ".mcp.json", "com.anthropic.claude-code/hooks.json", "skills/holler/SKILL.md", "plugin.json", "mcp.json"} {
+	dir := filepath.Join(e.Home, ".claude/skills/awp")
+	for _, f := range []string{".claude-plugin/plugin.json", ".mcp.json", "com.anthropic.claude-code/hooks.json", "skills/awp/SKILL.md", "plugin.json", "mcp.json"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Errorf("plugin is missing %s", f)
 		}
 	}
-	if fi, err := os.Stat(filepath.Join(dir, "bin/holler")); err != nil || fi.Mode().Perm()&0o111 == 0 {
+	if fi, err := os.Stat(filepath.Join(dir, "bin/awp")); err != nil || fi.Mode().Perm()&0o111 == 0 {
 		t.Fatalf("launcher not executable: %v", err)
 	}
-	matches, _ := filepath.Glob(filepath.Join(dir, "libexec/holler-*"))
+	matches, _ := filepath.Glob(filepath.Join(dir, "libexec/awp-*"))
 	if len(matches) != 1 {
 		t.Fatalf("libexec: %v", matches)
 	}
@@ -104,7 +104,7 @@ func TestClaudePlugin(t *testing.T) {
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatalf("plugin still there after uninstall")
 	}
-	// Someone else's skill directory named holler is left alone.
+	// Someone else's skill directory named awp is left alone.
 	write(t, filepath.Join(dir, "SKILL.md"), "---\nname: not-ours\n---\n")
 	if _, err := h.Install(ctx, e); err == nil {
 		t.Fatal("overwrote a foreign directory")
@@ -122,17 +122,17 @@ func TestCLIHarnesses(t *testing.T) {
 			t.Fatalf("%s: %v", id, err)
 		}
 	}
-	skill := read(t, filepath.Join(e.Home, ".codex/skills/holler/SKILL.md"))
+	skill := read(t, filepath.Join(e.Home, ".codex/skills/awp/SKILL.md"))
 	if strings.Contains(skill, "CLAUDE_SKILL_DIR") || !strings.Contains(skill, "run it as `"+bin+"`") {
 		t.Fatalf("skill not rendered for a standalone install:\n%.400s", skill)
 	}
 	want := [][]string{
-		{"codex", "mcp", "remove", "holler"},
-		{"codex", "mcp", "add", "holler", "--", bin, "mcp", "--harness", "codex"},
-		{"grok", "mcp", "remove", "holler"},
-		{"grok", "mcp", "add", "-s", "user", "holler", bin, "--", "mcp", "--harness", "grok"},
-		{"copilot", "mcp", "remove", "holler"},
-		{"copilot", "mcp", "add", "holler", "--", bin, "mcp", "--harness", "copilot"},
+		{"codex", "mcp", "remove", "awp"},
+		{"codex", "mcp", "add", "awp", "--", bin, "mcp", "--harness", "codex"},
+		{"grok", "mcp", "remove", "awp"},
+		{"grok", "mcp", "add", "-s", "user", "awp", bin, "--", "mcp", "--harness", "grok"},
+		{"copilot", "mcp", "remove", "awp"},
+		{"copilot", "mcp", "add", "awp", "--", bin, "mcp", "--harness", "copilot"},
 	}
 	if !reflect.DeepEqual(*calls, want) {
 		t.Fatalf("calls:\n%v\nwant:\n%v", *calls, want)
@@ -183,10 +183,10 @@ func TestCursorKeepsUserConfig(t *testing.T) {
 	if !(strings.Index(m, "zeta") < strings.Index(m, "mcpServers") && strings.Index(m, "mcpServers") < strings.Index(m, "alpha")) {
 		t.Fatalf("key order not kept:\n%s", m)
 	}
-	if !strings.Contains(m, `"other"`) || !strings.Contains(m, `"holler"`) {
+	if !strings.Contains(m, `"other"`) || !strings.Contains(m, `"awp"`) {
 		t.Fatalf("mcp.json:\n%s", m)
 	}
-	if read(t, hooks+".holler-backup") != cursorHooksBefore {
+	if read(t, hooks+".awp-backup") != cursorHooksBefore {
 		t.Fatal("backup is not the original file")
 	}
 	if s := h.Status(e); !s.Skill || !s.MCP || !s.Hooks {
@@ -198,7 +198,7 @@ func TestCursorKeepsUserConfig(t *testing.T) {
 	if !sameJSON([]byte(read(t, hooks)), []byte(cursorHooksBefore)) {
 		t.Fatalf("hooks after uninstall:\n%s", read(t, hooks))
 	}
-	if strings.Contains(read(t, mcp), "holler") || !strings.Contains(read(t, mcp), "other") {
+	if strings.Contains(read(t, mcp), "awp") || !strings.Contains(read(t, mcp), "other") {
 		t.Fatalf("mcp.json after uninstall:\n%s", read(t, mcp))
 	}
 }
@@ -226,7 +226,7 @@ func TestGeminiKeepsUserConfig(t *testing.T) {
 		} `json:"hooks"`
 	}
 	json.Unmarshal([]byte(read(t, settings)), &cfg)
-	if s := cfg.MCPServers["holler"]; s.Command != bin || !reflect.DeepEqual(s.Args, []string{"mcp", "--harness", "gemini"}) {
+	if s := cfg.MCPServers["awp"]; s.Command != bin || !reflect.DeepEqual(s.Args, []string{"mcp", "--harness", "gemini"}) {
 		t.Fatalf("mcpServers %+v", cfg.MCPServers)
 	}
 	after := cfg.Hooks["AfterTool"]
@@ -280,14 +280,14 @@ func TestOpencode(t *testing.T) {
 		} `json:"mcp"`
 	}
 	json.Unmarshal([]byte(read(t, cfg)), &c)
-	if s := c.MCP["holler"]; c.Model == "" || c.MCP["other"].Type != "local" || s.Type != "local" || !reflect.DeepEqual(s.Command, []string{bin, "mcp", "--harness", "opencode"}) || !s.Enabled {
+	if s := c.MCP["awp"]; c.Model == "" || c.MCP["other"].Type != "local" || s.Type != "local" || !reflect.DeepEqual(s.Command, []string{bin, "mcp", "--harness", "opencode"}) || !s.Enabled {
 		t.Fatalf("opencode.json:\n%s", read(t, cfg))
 	}
-	plugin := read(t, filepath.Join(dir, "plugins/holler.js"))
-	if !strings.Contains(plugin, `const HOLLER = "`+bin+`"`) || !strings.Contains(plugin, `"tool.execute.after"`) {
+	plugin := read(t, filepath.Join(dir, "plugins/awp.js"))
+	if !strings.Contains(plugin, `const BIN = "`+bin+`"`) || !strings.Contains(plugin, `"tool.execute.after"`) {
 		t.Fatalf("plugin:\n%s", plugin)
 	}
-	if !strings.Contains(read(t, filepath.Join(dir, "skills/holler/SKILL.md")), "name: holler") {
+	if !strings.Contains(read(t, filepath.Join(dir, "skills/awp/SKILL.md")), "name: awp") {
 		t.Fatal("skill missing")
 	}
 	if st := h.Status(e); !st.Skill || !st.MCP || !st.Hooks {
@@ -296,15 +296,15 @@ func TestOpencode(t *testing.T) {
 	if _, err := h.Uninstall(ctx, e); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(read(t, cfg), "holler") || !strings.Contains(read(t, cfg), "other") {
+	if strings.Contains(read(t, cfg), "awp") || !strings.Contains(read(t, cfg), "other") {
 		t.Fatalf("opencode.json after uninstall:\n%s", read(t, cfg))
 	}
-	if _, err := os.Stat(filepath.Join(dir, "plugins/holler.js")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "plugins/awp.js")); !os.IsNotExist(err) {
 		t.Fatal("plugin left behind")
 	}
 }
 
-// A user's opencode.json with comments is never rewritten: holler goes into
+// A user's opencode.json with comments is never rewritten: awp goes into
 // opencode.jsonc, which opencode merges with it.
 func TestOpencodeJSONC(t *testing.T) {
 	e, _ := testEnv(t, "opencode")
@@ -324,7 +324,7 @@ func TestOpencodeJSONC(t *testing.T) {
 	// With both files taken there is nowhere safe to write: say what to add.
 	os.Remove(filepath.Join(dir, "opencode.jsonc"))
 	write(t, filepath.Join(dir, "opencode.jsonc"), withComments)
-	if _, err := Lookup("opencode").Install(context.Background(), e); err == nil || !strings.Contains(err.Error(), "add holler") {
+	if _, err := Lookup("opencode").Install(context.Background(), e); err == nil || !strings.Contains(err.Error(), "add awp") {
 		t.Fatalf("expected manual instructions, got %v", err)
 	}
 }
@@ -335,8 +335,8 @@ func TestOpencodePluginSyntax(t *testing.T) {
 	if err != nil {
 		t.Skip("node not installed")
 	}
-	f := filepath.Join(t.TempDir(), "holler.mjs")
-	os.WriteFile(f, opencodePlugin(`/opt/my "tools"/holler`), 0o644)
+	f := filepath.Join(t.TempDir(), "awp.mjs")
+	os.WriteFile(f, opencodePlugin(`/opt/my "tools"/awp`), 0o644)
 	if out, err := exec.Command(node, "--check", f).CombinedOutput(); err != nil {
 		t.Fatalf("node --check: %v\n%s", err, out)
 	}
@@ -344,24 +344,24 @@ func TestOpencodePluginSyntax(t *testing.T) {
 
 func TestHookOwnership(t *testing.T) {
 	for cmd, ours := range map[string]bool{
-		"/usr/local/bin/holler hook inbox --format cursor":         true,
+		"/usr/local/bin/awp hook inbox --format cursor":            true,
 		"'/opt/my tools/hb' hook session-start --format gemini":    true,
 		"/x/renamed hook stop --format cursor":                     true,
 		".sprite-shared/hooks/sprite-env-check.sh --format cursor": false,
-		"holler hook":     false,
+		"awp hook":        false,
 		"echo hook inbox": false,
 	} {
-		if isHollerHook(cmd) != ours {
-			t.Errorf("isHollerHook(%q) = %v", cmd, !ours)
+		if isAWPHook(cmd) != ours {
+			t.Errorf("isAWPHook(%q) = %v", cmd, !ours)
 		}
 	}
 }
 
 func TestShellQuote(t *testing.T) {
 	for in, want := range map[string]string{
-		"/usr/local/bin/holler": "/usr/local/bin/holler",
-		"/Users/a b/bin/holler": "'/Users/a b/bin/holler'",
-		"/tmp/it's/holler":      `'/tmp/it'\''s/holler'`,
+		"/usr/local/bin/awp": "/usr/local/bin/awp",
+		"/Users/a b/bin/awp": "'/Users/a b/bin/awp'",
+		"/tmp/it's/awp":      `'/tmp/it'\''s/awp'`,
 	} {
 		if got := shellQuote(in); got != want {
 			t.Errorf("shellQuote(%q) = %s, want %s", in, got, want)

@@ -1,5 +1,5 @@
-// Package plugin embeds the holler agent plugin (plugin/holler) so that
-// `holler bootstrap` can install it without downloading anything. Built
+// Package plugin embeds the awp agent plugin (plugin/awp) so that
+// `awp bootstrap` can install it without downloading anything. Built
 // binaries under libexec/ are deliberately left out.
 package plugin
 
@@ -8,12 +8,12 @@ import (
 	"io/fs"
 )
 
-//go:embed all:holler/.claude-plugin all:holler/com.anthropic.claude-code holler/.mcp.json holler/skills holler/bin holler/plugin.json holler/mcp.json
+//go:embed all:awp/.claude-plugin all:awp/com.anthropic.claude-code awp/.mcp.json awp/skills awp/bin awp/plugin.json awp/mcp.json
 var files embed.FS
 
 // FS returns the plugin tree, rooted at the plugin directory.
 func FS() fs.FS {
-	sub, err := fs.Sub(files, "holler")
+	sub, err := fs.Sub(files, "awp")
 	if err != nil {
 		panic(err)
 	}

@@ -4,6 +4,14 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-28
+
+### Renamed
+
+- holler is now **awp**, the reference implementation of the **Agent Wire Protocol (AWP)**. The name is the whole change: the binary and every command (`awp up`, `awp send`, …), the home directory (`~/.awp`, `awp.db`, `awp.sock`), the environment variables (`AWP_*`), the MCP server and its tools (`awp_send`, …), the plugin and skill (`awp`), the Go module path (`github.com/agentwireprotocol/awp`), the request MIME types (`application/vnd.awp.exec+json` and the others), the auth context string (`awp-auth-v0`), the Python peer (`awp_peer.py`) and the release artifacts (`awp_<version>_<os>_<arch>.tar.gz`, `awp-plugin_<version>.tar.gz`). The wire format, `v: 0`, is otherwise unchanged.
+- There is no compatibility with 0.4.0. A 0.4.0 peer and an awp peer cannot complete the auth handshake, since the context string changed. Reinstall, run `awp bootstrap` again (it does not migrate holler's entries; `holler bootstrap --uninstall --all` removes them first), and keep an identity with `mv ~/.holler ~/.awp && mv ~/.awp/holler.db ~/.awp/awp.db`.
+- Draft 1 of the spec is now titled Agent Wire Protocol, with a new opening paragraph and a note on the old name. Its content is otherwise unchanged apart from the renamed strings.
+
 ## [0.4.0] - 2026-09-27
 
 Usability fixes from a run in which three agents did a real project over holler and reported everything that slowed them down.

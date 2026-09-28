@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/internal/transport"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/internal/transport"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // dialResult is the outcome of a handshake on a connection we dialed.

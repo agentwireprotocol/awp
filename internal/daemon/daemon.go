@@ -15,13 +15,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/api"
-	"github.com/hollerprotocol/holler/internal/control"
-	"github.com/hollerprotocol/holler/internal/node"
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/internal/transport"
-	"github.com/hollerprotocol/holler/internal/version"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/api"
+	"github.com/agentwireprotocol/awp/internal/control"
+	"github.com/agentwireprotocol/awp/internal/node"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/internal/transport"
+	"github.com/agentwireprotocol/awp/internal/version"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Daemon serves the control API for one node.
@@ -68,9 +68,9 @@ func Run(cfg Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	d := &Daemon{n: n, cfg: cfg, started: time.Now(), stop: stop}
-	logger.Printf("holler daemon %s up as %s (%s), home %s", version.String(), n.Name(), n.Key(), cfg.Home)
+	logger.Printf("awp daemon %s up as %s (%s), home %s", version.String(), n.Name(), n.Key(), cfg.Home)
 	err = control.Serve(ctx, cfg.Home, d)
-	logger.Printf("holler daemon stopping")
+	logger.Printf("awp daemon stopping")
 	return err
 }
 
@@ -81,7 +81,7 @@ func lock(path string) (func(), error) {
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
-		return nil, fmt.Errorf("another holler daemon is running with home %s", filepath.Dir(path))
+		return nil, fmt.Errorf("another awp daemon is running with home %s", filepath.Dir(path))
 	}
 	return func() {
 		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)

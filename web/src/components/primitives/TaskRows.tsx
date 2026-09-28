@@ -1,5 +1,5 @@
 // From Beautiful UI's task-rows (beautifului.dev/r/task-rows): the pieces
-// holler's thread list uses.
+// awp's thread list uses.
 /** A thread's lead ring: static, with an optional mark inside. (Moving
  *  indicators use loading.dev's Comet.) */
 export function SpinnerRing({ children }: { children?: React.ReactNode }) {

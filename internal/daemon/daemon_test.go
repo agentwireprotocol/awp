@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/api"
-	"github.com/hollerprotocol/holler/internal/node"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/api"
+	"github.com/agentwireprotocol/awp/internal/node"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // The agent acting counts as activity; dashboards reading does not.

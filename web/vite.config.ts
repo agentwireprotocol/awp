@@ -25,8 +25,8 @@ export default defineConfig({
       hmr: { host: publicHost, protocol: "wss", clientPort: 443 },
     }),
     proxy: {
-      // `holler web --listen 127.0.0.1:7788`, or HOLLER_WEB=http://host:port
-      "/api": { target: process.env.HOLLER_WEB || "http://127.0.0.1:7788", changeOrigin: true },
+      // `awp web --listen 127.0.0.1:7788`, or AWP_WEB=http://host:port
+      "/api": { target: process.env.AWP_WEB || "http://127.0.0.1:7788", changeOrigin: true },
     },
   },
   build: {

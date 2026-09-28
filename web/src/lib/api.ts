@@ -9,7 +9,7 @@ export interface EventHandlers {
   onError(): void
 }
 
-/** Where the dashboard's data comes from: the host's `holler web`, or the
+/** Where the dashboard's data comes from: the host's `awp web`, or the
  *  development mock. */
 export interface Transport {
   state(): Promise<State>

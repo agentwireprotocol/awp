@@ -28,7 +28,7 @@ func TestDetect(t *testing.T) {
 func TestFromName(t *testing.T) {
 	for name, want := range map[string]string{
 		"claude-code@worker": Claude, "Codex@builder": Codex, "gemini-cli@x": Gemini,
-		"holler@host": "", "cursor": Cursor, "": "",
+		"awp@host": "", "cursor": Cursor, "": "",
 	} {
 		if got := FromName(name); got != want {
 			t.Errorf("FromName(%q) = %q, want %q", name, got, want)

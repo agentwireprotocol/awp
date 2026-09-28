@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/api"
-	"github.com/hollerprotocol/holler/internal/harness"
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/api"
+	"github.com/agentwireprotocol/awp/internal/harness"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // The JSON shapes here are the web API; web/src/lib/types.ts is their
@@ -40,8 +40,8 @@ type Agent struct {
 	Harness string `json:"harness,omitempty"` // claude, codex, ...: declared, else guessed from the name
 	Model   string `json:"model,omitempty"`   // the model it runs on, as it reports it
 	Host    string `json:"host,omitempty"`    // the hostname of the machine it runs on
-	// LastActive is when it last did something through holler (to 30
-	// seconds for other hosts); Listening says it is blocked in holler wait.
+	// LastActive is when it last did something through awp (to 30
+	// seconds for other hosts); Listening says it is blocked in awp wait.
 	LastActive *time.Time `json:"last_active,omitempty"`
 	// How this host reaches it, for its direct peers: the transport of the
 	// live connection (tailcat, tcp, unix) and its round trip; or, when
@@ -149,11 +149,11 @@ func threadID(th, x, y string) (id, a, b string) {
 	return th + ":" + a + ":" + b, a, b
 }
 
-// realAbout drops the about text holler puts in hello when the agent set
-// none ("holler-go 0.2.0, key fingerprint SHA256:..."): it says nothing
+// realAbout drops the about text awp puts in hello when the agent set
+// none ("awp-go 0.2.0, key fingerprint SHA256:..."): it says nothing
 // about what the agent is doing.
 func realAbout(s string) string {
-	if strings.HasPrefix(s, "holler-") && strings.Contains(s, "key fingerprint") {
+	if strings.HasPrefix(s, "awp-") && strings.Contains(s, "key fingerprint") {
 		return ""
 	}
 	return s
@@ -585,7 +585,7 @@ type WebPart struct {
 	Mime   string          `json:"mime,omitempty"`
 	Size   *int64          `json:"size,omitempty"`
 	Status string          `json:"status,omitempty"`
-	// URL fetches a file this host has (holler web's /api/blob): received
+	// URL fetches a file this host has (awp web's /api/blob): received
 	// and complete, or sent by this host.
 	URL string `json:"url,omitempty"`
 }

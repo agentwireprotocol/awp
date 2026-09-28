@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Activity reaches the network in presence: coarse, and with waiting.

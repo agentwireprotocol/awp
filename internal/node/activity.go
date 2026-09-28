@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Activity: when this node's agent last did something through holler (a
+// Activity: when this node's agent last did something through awp (a
 // hook ran, it sent, set a state, read its inbox...), and whether it is
 // blocked waiting for a message. Presence carries both, coarsely, so a
 // dashboard can tell "working" from "said working, then went quiet".

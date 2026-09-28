@@ -1,7 +1,7 @@
 // Agents' avatars: Boring Avatars' "marble", drawn from the agent's key, so
 // the same agent looks the same on every host and visit.
 //
-// Every agent gets its own palette: holler's palette turned round the colour
+// Every agent gets its own palette: awp's palette turned round the colour
 // wheel by an amount taken from its key. The turn keeps each colour's
 // lightness and chroma, so all palettes feel related while agents differ at
 // a glance (one agent in twelve keeps its hues), and the colour that leads
@@ -64,7 +64,7 @@ function oklchToHex([L, C, H]: Lch): string {
 const BASE = PALETTE.map(hexToOklch)
 const cache = new Map<string, string[]>()
 
-/** An agent's palette: holler's, turned by an amount from its key. */
+/** An agent's palette: awp's, turned by an amount from its key. */
 export function agentPalette(key: string): string[] {
   const hit = cache.get(key)
   if (hit) return hit

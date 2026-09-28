@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hollerprotocol/holler/internal/store"
-	"github.com/hollerprotocol/holler/wire"
+	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Admission policies (section 7.3).
@@ -49,10 +49,10 @@ type Policy struct {
 // requestMimes maps the mime types of capability requests (data parts) to
 // the capability they need. The shapes are defined in PROFILE.md.
 var requestMimes = map[string]string{
-	"application/vnd.holler.exec+json":     CapExec,
-	"application/vnd.holler.fs-read+json":  CapFSRead,
-	"application/vnd.holler.fs-write+json": CapFSWrite,
-	"application/vnd.holler.admin+json":    CapAdmin,
+	"application/vnd.awp.exec+json":     CapExec,
+	"application/vnd.awp.fs-read+json":  CapFSRead,
+	"application/vnd.awp.fs-write+json": CapFSWrite,
+	"application/vnd.awp.admin+json":    CapAdmin,
 }
 
 // Request is a capability request found in a received msg.

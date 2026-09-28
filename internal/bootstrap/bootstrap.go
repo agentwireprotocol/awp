@@ -1,4 +1,4 @@
-// Package bootstrap wires holler into the agent harnesses installed on a
+// Package bootstrap wires awp into the agent harnesses installed on a
 // machine, so the next session of each already knows how to message other
 // agents. Each harness gets what it supports:
 //
@@ -10,8 +10,8 @@
 //	grok          skill and MCP server
 //	pi            skill (pi has no MCP)
 //
-// Everything bootstrap writes is marked as holler's own (a plugin or skill
-// named holler, hook commands running `holler hook`), so running it again
+// Everything bootstrap writes is marked as awp's own (a plugin or skill
+// named awp, hook commands running `awp hook`), so running it again
 // replaces rather than duplicates, and uninstalling removes only that.
 package bootstrap
 
@@ -30,14 +30,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hollerprotocol/holler/plugin"
+	"github.com/agentwireprotocol/awp/plugin"
 )
 
 // Env is everything bootstrap touches, so that tests can fake it.
 type Env struct {
 	Home       string                                                    // the user's home directory
 	ConfigHome string                                                    // $XDG_CONFIG_HOME; empty means Home/.config
-	Bin        string                                                    // absolute path of the holler binary to wire in
+	Bin        string                                                    // absolute path of the awp binary to wire in
 	LookPath   func(file string) (string, error)                         // finds harness executables
 	Run        func(ctx context.Context, argv ...string) (string, error) // runs harness CLIs
 	DryRun     bool
@@ -107,7 +107,7 @@ type Harness struct {
 	status    func(*Env) Status
 }
 
-// Status is what holler has installed into a harness.
+// Status is what awp has installed into a harness.
 type Status struct {
 	Skill bool
 	MCP   bool
@@ -148,10 +148,10 @@ var Harnesses = []*Harness{
 		ID: "codex", Name: "Codex", Bins: []string{"codex"}, Dir: ".codex",
 		MCP: true, Hooks: false,
 		Gets: "skill, MCP server",
-		install: cliMCP(".codex/skills", []string{"codex", "mcp", "remove", "holler"}, func(bin string) []string {
-			return []string{"codex", "mcp", "add", "holler", "--", bin, "mcp", "--harness", "codex"}
+		install: cliMCP(".codex/skills", []string{"codex", "mcp", "remove", "awp"}, func(bin string) []string {
+			return []string{"codex", "mcp", "add", "awp", "--", bin, "mcp", "--harness", "codex"}
 		}),
-		uninstall: cliUninstall(".codex/skills", []string{"codex", "mcp", "remove", "holler"}),
+		uninstall: cliUninstall(".codex/skills", []string{"codex", "mcp", "remove", "awp"}),
 		status:    tomlStatus(".codex/skills", ".codex/config.toml"),
 	},
 	{
@@ -174,20 +174,20 @@ var Harnesses = []*Harness{
 		ID: "copilot", Name: "GitHub Copilot CLI", Bins: []string{"copilot"}, Dir: ".copilot",
 		MCP: true, Hooks: false,
 		Gets: "skill, MCP server",
-		install: cliMCP(".copilot/skills", []string{"copilot", "mcp", "remove", "holler"}, func(bin string) []string {
-			return []string{"copilot", "mcp", "add", "holler", "--", bin, "mcp", "--harness", "copilot"}
+		install: cliMCP(".copilot/skills", []string{"copilot", "mcp", "remove", "awp"}, func(bin string) []string {
+			return []string{"copilot", "mcp", "add", "awp", "--", bin, "mcp", "--harness", "copilot"}
 		}),
-		uninstall: cliUninstall(".copilot/skills", []string{"copilot", "mcp", "remove", "holler"}),
+		uninstall: cliUninstall(".copilot/skills", []string{"copilot", "mcp", "remove", "awp"}),
 		status:    jsonMCPStatus(".copilot/skills", ".copilot/mcp-config.json"),
 	},
 	{
 		ID: "grok", Name: "grok", Bins: []string{"grok"}, Dir: ".grok",
 		MCP: true, Hooks: false,
 		Gets: "skill, MCP server",
-		install: cliMCP(".grok/skills", []string{"grok", "mcp", "remove", "holler"}, func(bin string) []string {
-			return []string{"grok", "mcp", "add", "-s", "user", "holler", bin, "--", "mcp", "--harness", "grok"}
+		install: cliMCP(".grok/skills", []string{"grok", "mcp", "remove", "awp"}, func(bin string) []string {
+			return []string{"grok", "mcp", "add", "-s", "user", "awp", bin, "--", "mcp", "--harness", "grok"}
 		}),
-		uninstall: cliUninstall(".grok/skills", []string{"grok", "mcp", "remove", "holler"}),
+		uninstall: cliUninstall(".grok/skills", []string{"grok", "mcp", "remove", "awp"}),
 		status:    tomlStatus(".grok/skills", ".grok/config.toml"),
 	},
 	{
@@ -275,7 +275,7 @@ func firstLine(s string) string {
 	return strings.TrimSuffix(strings.TrimSpace(s), ".")
 }
 
-// Install sets holler up in the harness and describes what it did.
+// Install sets awp up in the harness and describes what it did.
 func (h *Harness) Install(ctx context.Context, e *Env) ([]string, error) {
 	return h.install(ctx, e)
 }
@@ -290,16 +290,16 @@ func (h *Harness) Status(e *Env) Status { return h.status(e) }
 
 // --- skills ---
 
-const skillPath = "skills/holler/SKILL.md"
+const skillPath = "skills/awp/SKILL.md"
 
-// skillText is the holler skill for harnesses that are not running it from
+// skillText is the awp skill for harnesses that are not running it from
 // the plugin: it points at the installed binary instead of the plugin's.
 func skillText(bin string) ([]byte, error) {
 	b, err := fs.ReadFile(plugin.FS(), skillPath)
 	if err != nil {
 		return nil, err
 	}
-	const pluginNote = "Installed as a plugin, it is on PATH. If not, it sits next to this skill at `${CLAUDE_SKILL_DIR}/../../bin/holler`."
+	const pluginNote = "Installed as a plugin, it is on PATH. If not, it sits next to this skill at `${CLAUDE_SKILL_DIR}/../../bin/awp`."
 	s := string(b)
 	if !strings.Contains(s, pluginNote) {
 		return nil, errors.New("SKILL.md no longer has the plugin path note; update bootstrap.skillText")
@@ -314,7 +314,7 @@ func installSkillAt(e *Env, skills string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(skills, "holler", "SKILL.md")
+	path := filepath.Join(skills, "awp", "SKILL.md")
 	if !e.DryRun {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return nil, err
@@ -329,8 +329,8 @@ func installSkillAt(e *Env, skills string) ([]string, error) {
 func hasSkill(e *Env, dir string) bool { return hasSkillAt(e.path(dir)) }
 
 func hasSkillAt(skills string) bool {
-	b, err := os.ReadFile(filepath.Join(skills, "holler", "SKILL.md"))
-	return err == nil && bytes.Contains(b, []byte("name: holler"))
+	b, err := os.ReadFile(filepath.Join(skills, "awp", "SKILL.md"))
+	return err == nil && bytes.Contains(b, []byte("name: awp"))
 }
 
 func uninstallSkill(e *Env, dir string) ([]string, error) { return uninstallSkillAt(e, e.path(dir)) }
@@ -339,7 +339,7 @@ func uninstallSkillAt(e *Env, skills string) ([]string, error) {
 	if !hasSkillAt(skills) {
 		return nil, nil
 	}
-	p := filepath.Join(skills, "holler")
+	p := filepath.Join(skills, "awp")
 	if !e.DryRun {
 		if err := os.RemoveAll(p); err != nil {
 			return nil, err
@@ -382,15 +382,15 @@ func cliUninstall(skillDir string, remove []string) func(context.Context, *Env) 
 	}
 }
 
-// tomlStatus checks a TOML config for an [mcp_servers.holler] table.
+// tomlStatus checks a TOML config for an [mcp_servers.awp] table.
 func tomlStatus(skillDir, config string) func(*Env) Status {
 	return func(e *Env) Status {
 		b, _ := os.ReadFile(e.path(config))
-		return Status{Skill: hasSkill(e, skillDir), MCP: bytes.Contains(b, []byte("[mcp_servers.holler]"))}
+		return Status{Skill: hasSkill(e, skillDir), MCP: bytes.Contains(b, []byte("[mcp_servers.awp]"))}
 	}
 }
 
-// jsonMCPStatus checks a JSON config for mcpServers.holler.
+// jsonMCPStatus checks a JSON config for mcpServers.awp.
 func jsonMCPStatus(skillDir, config string) func(*Env) Status {
 	return func(e *Env) Status {
 		return Status{Skill: hasSkill(e, skillDir), MCP: jsonHasServer(e.path(config))}
@@ -406,7 +406,7 @@ func jsonHasServer(path string) bool {
 		MCPServers map[string]json.RawMessage `json:"mcpServers"`
 	}
 	json.Unmarshal(b, &cfg)
-	_, ok := cfg.MCPServers["holler"]
+	_, ok := cfg.MCPServers["awp"]
 	return ok
 }
 
@@ -414,23 +414,23 @@ func jsonHasServer(path string) bool {
 
 // Claude Code loads plugins found in ~/.claude/skills/<name>/ as
 // <name>@skills-dir, hooks and .mcp.json included.
-func claudeDir(e *Env) string { return e.path(".claude", "skills", "holler") }
+func claudeDir(e *Env) string { return e.path(".claude", "skills", "awp") }
 
-func isHollerPlugin(dir string) bool {
+func isAWPPlugin(dir string) bool {
 	b, err := os.ReadFile(filepath.Join(dir, ".claude-plugin", "plugin.json"))
 	if err != nil {
 		return false
 	}
 	var m struct{ Name string }
-	return json.Unmarshal(b, &m) == nil && m.Name == "holler"
+	return json.Unmarshal(b, &m) == nil && m.Name == "awp"
 }
 
 func installClaude(ctx context.Context, e *Env) ([]string, error) {
 	dir := claudeDir(e)
-	if _, err := os.Stat(dir); err == nil && !isHollerPlugin(dir) {
-		return nil, fmt.Errorf("%s exists and is not the holler plugin; move it aside first", e.display(dir))
+	if _, err := os.Stat(dir); err == nil && !isAWPPlugin(dir) {
+		return nil, fmt.Errorf("%s exists and is not the awp plugin; move it aside first", e.display(dir))
 	}
-	did := []string{"plugin → " + e.display(dir) + " (loads as holler@skills-dir)"}
+	did := []string{"plugin → " + e.display(dir) + " (loads as awp@skills-dir)"}
 	if e.DryRun {
 		return did, nil
 	}
@@ -458,13 +458,13 @@ func installClaude(ctx context.Context, e *Env) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The plugin's launcher runs libexec/holler-<os>-<arch>: point it at
+	// The plugin's launcher runs libexec/awp-<os>-<arch>: point it at
 	// this binary.
 	lib := filepath.Join(dir, "libexec")
 	if err := os.MkdirAll(lib, 0o755); err != nil {
 		return nil, err
 	}
-	link := filepath.Join(lib, "holler-"+runtime.GOOS+"-"+runtime.GOARCH)
+	link := filepath.Join(lib, "awp-"+runtime.GOOS+"-"+runtime.GOARCH)
 	if err := os.Symlink(e.Bin, link); err != nil {
 		return nil, err
 	}
@@ -473,7 +473,7 @@ func installClaude(ctx context.Context, e *Env) ([]string, error) {
 
 func uninstallClaude(ctx context.Context, e *Env) ([]string, error) {
 	dir := claudeDir(e)
-	if !isHollerPlugin(dir) {
+	if !isAWPPlugin(dir) {
 		return nil, nil
 	}
 	if !e.DryRun {
@@ -485,13 +485,13 @@ func uninstallClaude(ctx context.Context, e *Env) ([]string, error) {
 }
 
 func statusClaude(e *Env) Status {
-	ok := isHollerPlugin(claudeDir(e))
+	ok := isAWPPlugin(claudeDir(e))
 	return Status{Skill: ok, MCP: ok, Hooks: ok}
 }
 
 // --- Cursor: ~/.cursor/mcp.json and ~/.cursor/hooks.json ---
 
-// cursorHooks maps Cursor hook events to `holler hook` events. Cursor adds
+// cursorHooks maps Cursor hook events to `awp hook` events. Cursor adds
 // a hook's additional_context to the conversation, and a stop hook's
 // followup_message keeps the agent going.
 var cursorHooks = []struct{ event, hook string }{
@@ -522,7 +522,7 @@ func installCursor(ctx context.Context, e *Env) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		servers.set("holler", map[string]any{"command": e.Bin, "args": []string{"mcp", "--harness", "cursor"}})
+		servers.set("awp", map[string]any{"command": e.Bin, "args": []string{"mcp", "--harness", "cursor"}})
 		return o.set("mcpServers", servers)
 	}); err != nil {
 		return did, err
@@ -538,7 +538,7 @@ func installCursor(ctx context.Context, e *Env) ([]string, error) {
 			return err
 		}
 		for _, ch := range cursorHooks {
-			entries, err := withoutHollerHooks(h, ch.event, cursorCommand)
+			entries, err := withoutAWPHooks(h, ch.event, cursorCommand)
 			if err != nil {
 				return err
 			}
@@ -554,8 +554,8 @@ func installCursor(ctx context.Context, e *Env) ([]string, error) {
 		// Pre-approve the server so the first session does not stop to ask.
 		for _, bin := range []string{"cursor-agent", "cursor"} {
 			if _, err := e.LookPath(bin); err == nil {
-				if _, err := e.Run(ctx, bin, "mcp", "enable", "holler"); err == nil {
-					did = append(did, "approved the MCP server ("+bin+" mcp enable holler)")
+				if _, err := e.Run(ctx, bin, "mcp", "enable", "awp"); err == nil {
+					did = append(did, "approved the MCP server ("+bin+" mcp enable awp)")
 				}
 				break
 			}
@@ -583,29 +583,29 @@ func hookEntries(hooks *object, event string) ([]json.RawMessage, error) {
 	return entries, nil
 }
 
-// withoutHollerHooks returns the entries under event, minus holler's own.
-func withoutHollerHooks(hooks *object, event string, command func(json.RawMessage) string) ([]json.RawMessage, error) {
+// withoutAWPHooks returns the entries under event, minus awp's own.
+func withoutAWPHooks(hooks *object, event string, command func(json.RawMessage) string) ([]json.RawMessage, error) {
 	entries, err := hookEntries(hooks, event)
 	if err != nil {
 		return nil, err
 	}
 	var keep []json.RawMessage
 	for _, en := range entries {
-		if !isHollerHook(command(en)) {
+		if !isAWPHook(command(en)) {
 			keep = append(keep, en)
 		}
 	}
 	return keep, nil
 }
 
-// removeHollerHooks drops holler's entries from every event in hooks.
-func removeHollerHooks(o *object, command func(json.RawMessage) string) error {
+// removeAWPHooks drops awp's entries from every event in hooks.
+func removeAWPHooks(o *object, command func(json.RawMessage) string) error {
 	h, err := o.object("hooks")
 	if err != nil {
 		return err
 	}
 	for _, event := range append([]string(nil), h.keys...) {
-		keep, err := withoutHollerHooks(h, event, command)
+		keep, err := withoutAWPHooks(h, event, command)
 		if err != nil {
 			return err
 		}
@@ -622,7 +622,7 @@ func removeHollerHooks(o *object, command func(json.RawMessage) string) error {
 	return o.set("hooks", h)
 }
 
-func hasHollerHooks(path string, command func(json.RawMessage) string) bool {
+func hasAWPHooks(path string, command func(json.RawMessage) string) bool {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return false
@@ -638,7 +638,7 @@ func hasHollerHooks(path string, command func(json.RawMessage) string) bool {
 	for _, event := range h.keys {
 		entries, _ := hookEntries(h, event)
 		for _, en := range entries {
-			if isHollerHook(command(en)) {
+			if isAWPHook(command(en)) {
 				return true
 			}
 		}
@@ -657,7 +657,7 @@ func uninstallCursor(ctx context.Context, e *Env) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		servers.del("holler")
+		servers.del("awp")
 		return o.set("mcpServers", servers)
 	}); err != nil {
 		return did, err
@@ -665,7 +665,7 @@ func uninstallCursor(ctx context.Context, e *Env) ([]string, error) {
 		did = append(did, "removed MCP server from "+e.display(mcp))
 	}
 	hooks := e.path(".cursor", "hooks.json")
-	if changed, err := editJSON(hooks, e.DryRun, func(o *object) error { return removeHollerHooks(o, cursorCommand) }); err != nil {
+	if changed, err := editJSON(hooks, e.DryRun, func(o *object) error { return removeAWPHooks(o, cursorCommand) }); err != nil {
 		return did, err
 	} else if changed {
 		did = append(did, "removed hooks from "+e.display(hooks))
@@ -677,13 +677,13 @@ func statusCursor(e *Env) Status {
 	return Status{
 		Skill: hasSkill(e, ".cursor/skills"),
 		MCP:   jsonHasServer(e.path(".cursor", "mcp.json")),
-		Hooks: hasHollerHooks(e.path(".cursor", "hooks.json"), cursorCommand),
+		Hooks: hasAWPHooks(e.path(".cursor", "hooks.json"), cursorCommand),
 	}
 }
 
 // --- Gemini CLI: ~/.gemini/settings.json ---
 
-// geminiHooks maps Gemini CLI hook events to `holler hook` events. Gemini
+// geminiHooks maps Gemini CLI hook events to `awp hook` events. Gemini
 // reads additionalContext from hookSpecificOutput, like Claude Code.
 var geminiHooks = []struct{ event, hook, matcher string }{
 	{"SessionStart", "session-start", ""},
@@ -697,7 +697,7 @@ func geminiCommand(group json.RawMessage) string {
 	}
 	json.Unmarshal(group, &g)
 	for _, h := range g.Hooks {
-		if isHollerHook(h.Command) {
+		if isAWPHook(h.Command) {
 			return h.Command
 		}
 	}
@@ -715,7 +715,7 @@ func installGemini(ctx context.Context, e *Env) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		servers.set("holler", map[string]any{"command": e.Bin, "args": []string{"mcp", "--harness", "gemini"}})
+		servers.set("awp", map[string]any{"command": e.Bin, "args": []string{"mcp", "--harness", "gemini"}})
 		if err := o.set("mcpServers", servers); err != nil {
 			return err
 		}
@@ -724,7 +724,7 @@ func installGemini(ctx context.Context, e *Env) ([]string, error) {
 			return err
 		}
 		for _, gh := range geminiHooks {
-			groups, err := withoutHollerHooks(h, gh.event, geminiCommand)
+			groups, err := withoutAWPHooks(h, gh.event, geminiCommand)
 			if err != nil {
 				return err
 			}
@@ -754,13 +754,13 @@ func uninstallGemini(ctx context.Context, e *Env) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		servers.del("holler")
+		servers.del("awp")
 		if servers.empty() {
 			o.del("mcpServers")
 		} else if err := o.set("mcpServers", servers); err != nil {
 			return err
 		}
-		return removeHollerHooks(o, geminiCommand)
+		return removeAWPHooks(o, geminiCommand)
 	})
 	if err != nil {
 		return did, err
@@ -773,5 +773,5 @@ func uninstallGemini(ctx context.Context, e *Env) ([]string, error) {
 
 func statusGemini(e *Env) Status {
 	settings := e.path(".gemini", "settings.json")
-	return Status{Skill: hasSkill(e, ".gemini/skills"), MCP: jsonHasServer(settings), Hooks: hasHollerHooks(settings, geminiCommand)}
+	return Status{Skill: hasSkill(e, ".gemini/skills"), MCP: jsonHasServer(settings), Hooks: hasAWPHooks(settings, geminiCommand)}
 }

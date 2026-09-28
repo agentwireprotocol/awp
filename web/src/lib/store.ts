@@ -21,7 +21,7 @@ type MessageListener = (m: { peer: string; th: string; message: Message }) => vo
 
 /** Holds the dashboard's data and keeps it live: one state snapshot, the
  *  network-wide activity log, and a stream that reconnects with backoff. */
-export class HollerStore {
+export class AWPStore {
   private snap: Snapshot = { activity: [], conn: "connecting" }
   private listeners = new Set<() => void>()
   private activityListeners = new Set<ActivityListener>()
@@ -127,18 +127,18 @@ export class HollerStore {
   }
 }
 
-let store: HollerStore | undefined
+let store: AWPStore | undefined
 
-export function setStore(s: HollerStore) {
+export function setStore(s: AWPStore) {
   store = s
 }
 
-export function getStore(): HollerStore {
-  if (!store) throw new Error("holler store not initialized")
+export function getStore(): AWPStore {
+  if (!store) throw new Error("awp store not initialized")
   return store
 }
 
-export function useHoller(): Snapshot {
+export function useAWP(): Snapshot {
   const s = getStore()
   return useSyncExternalStore(s.subscribe, s.getSnapshot)
 }

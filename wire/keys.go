@@ -76,7 +76,7 @@ func Nonce(n int) string {
 }
 
 // AuthPayload is the byte string signed in auth:
-// "holler-auth-v0" || 0x00 || my_hello_line || 0x00 || peer_hello_line.
+// "awp-auth-v0" || 0x00 || my_hello_line || 0x00 || peer_hello_line.
 func AuthPayload(myHello, peerHello []byte) []byte {
 	b := make([]byte, 0, len(AuthContext)+2+len(myHello)+len(peerHello))
 	b = append(b, AuthContext...)

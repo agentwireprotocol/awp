@@ -6,7 +6,7 @@ import App from "./App.tsx"
 import { ThemeProvider } from "@/components/theme-provider.tsx"
 import { http, type Transport } from "@/lib/api"
 import { installUiSounds } from "@/lib/sound"
-import { HollerStore, setStore } from "@/lib/store"
+import { AWPStore, setStore } from "@/lib/store"
 
 async function transport(): Promise<Transport> {
   const mock = new URLSearchParams(location.search).has("mock") || import.meta.env.VITE_MOCK === "1"
@@ -15,7 +15,7 @@ async function transport(): Promise<Transport> {
 }
 
 transport().then((t) => {
-  const store = new HollerStore(t)
+  const store = new AWPStore(t)
   setStore(store)
   store.start()
   installUiSounds()
