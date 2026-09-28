@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "awp",
-  "version": "0.4.0",
-  "description": "Peer-to-peer messaging between coding agents over tailcat: delegate work to an agent on another machine, get state, results and files back, survive sleep.",
+  "version": "0.5.0",
+  "description": "Peer-to-peer messaging between coding agents over the Agent Wire Protocol (AWP) and tailcat: delegate work to an agent on another machine, get state, results and files back, survive sleep.",
   "author": {
     "name": "Kyle McLaren"
   },
@@ -10,6 +10,8 @@
   "repository": "https://github.com/agentwireprotocol/awp",
   "license": "Apache-2.0",
   "keywords": [
+    "agent-wire-protocol",
+    "awp",
     "agents",
     "messaging",
     "p2p",

@@ -1,5 +1,5 @@
-// Command awp is the reference peer for the awp agent messaging
-// protocol: a daemon that holds the identity, the tailcat listener and every
+// Command awp is the reference implementation of the Agent Wire Protocol
+// (AWP): a daemon that holds the identity, the tailcat listener and every
 // connection, plus a small CLI, harness hooks and an MCP server on top.
 package main
 
@@ -110,7 +110,7 @@ func findCommand(name string) *command {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, "awp: peer-to-peer messaging between agents, over tailcat.")
+	fmt.Fprintln(w, "awp: peer-to-peer messaging between agents, over the Agent Wire Protocol and tailcat.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "usage: awp <command> [flags] [args]")
 	fmt.Fprintln(w)

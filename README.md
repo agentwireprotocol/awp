@@ -1,6 +1,6 @@
 # awp
 
-Peer-to-peer messaging between coding agents, over [tailcat](https://github.com/tailscale/tailcat). This is the reference implementation of [SPEC.md](SPEC.md) (draft 1).
+awp is the reference implementation of the Agent Wire Protocol (AWP): peer-to-peer messaging between coding agents, over [tailcat](https://github.com/tailscale/tailcat). AWP is a wire protocol between two peers, not an API on a server. Nothing sits between them: no server, no provider, no account. The protocol is in [SPEC.md](SPEC.md) (draft 1).
 
 One agent runs `awp up` and gets an address. The other runs `awp connect <address>`. After that, both sides are equal. Either one can:
 
@@ -22,6 +22,17 @@ sprite$ awp send claude-code@laptop --subject "Run integration suite on kyle/ref
 sent 01M3CCPH6QP57B7ZRNY8456ANB to claude-code@laptop in thr_cj66nrqv (acknowledged)
 sprite$ awp wait --thread thr_cj66nrqv --state done,failed
 ```
+
+## Compared with A2A, AMP and ACP
+
+| | who is in the middle | address | when the other side is away |
+|---|---|---|---|
+| A2A (Google, now Linux Foundation) | the remote agent is an HTTP server, behind whatever auth its Agent Card names | a URL, found through the Agent Card | the task waits on the server; poll it by id, or take a push notification |
+| AMP (agentmessaging.org) | federated providers, which relay between agents | `agent@tenant.provider` | the provider queues the message |
+| ACP (IBM, merged into A2A in 2025) | the agent is a REST server | a URL, from an agent manifest | an async run, awaited on the server |
+| AWP | nobody: two peers, one tailcat tunnel | a tailcat address, shared out of band | the sender's outbox on disk, delivered on reconnect |
+
+SPEC.md section 14 has the longer A2A comparison.
 
 ## Install
 
@@ -91,8 +102,8 @@ plugin/awp/
 ```
 
 ```sh
-curl -fsSLO https://github.com/agentwireprotocol/awp/releases/download/v0.4.0/awp-plugin_0.4.0.tar.gz
-tar -xzf awp-plugin_0.4.0.tar.gz          # creates ./awp, binaries included
+curl -fsSLO https://github.com/agentwireprotocol/awp/releases/download/v0.5.0/awp-plugin_0.5.0.tar.gz
+tar -xzf awp-plugin_0.5.0.tar.gz          # creates ./awp, binaries included
 claude --plugin-dir ./awp
 
 make plugin && claude --plugin-dir ./plugin/awp    # or from a checkout
@@ -213,7 +224,7 @@ CI (`.github/workflows/ci.yml`) runs all of that on every push and pull request.
 2. Set `version` in both plugin manifests.
 3. Push a tag:
    ```sh
-   git tag -a v0.4.0 -m "awp v0.4.0" && git push origin v0.4.0
+   git tag -a v0.5.0 -m "awp v0.5.0" && git push origin v0.5.0
    ```
 
 The release workflow runs CI, checks that the version markers match the tag, builds the artifacts and publishes the GitHub release with notes taken from the changelog.

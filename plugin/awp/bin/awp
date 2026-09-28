@@ -1,6 +1,6 @@
 #!/bin/sh
 # awp launcher: runs the awp build for this OS and CPU from libexec/,
-# or falls back to a awp installed elsewhere on PATH.
+# or falls back to an awp installed elsewhere on PATH.
 dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case $(uname -m) in
@@ -21,6 +21,6 @@ for p in $PATH; do
   fi
 done
 echo "awp: this plugin has no build for $os-$arch." >&2
-echo "Use the plugin bundle from a release (awp-plugin_<version>.tar.gz), put a awp" >&2
+echo "Use the plugin bundle from a release (awp-plugin_<version>.tar.gz), put an awp" >&2
 echo "binary from a release on PATH, or: go install github.com/agentwireprotocol/awp/cmd/awp@latest" >&2
 exit 127

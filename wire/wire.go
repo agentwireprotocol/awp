@@ -1,9 +1,9 @@
-// Package wire implements the awp wire format: NDJSON framing, the
-// message envelope, the typed messages of SPEC.md sections 6 to 10, Ed25519
+// Package wire implements the wire format of the Agent Wire Protocol
+// (AWP): NDJSON framing, the message envelope, the typed messages of SPEC.md sections 6 to 10, Ed25519
 // key encoding, canonical JSON and signed grants.
 //
 // The package has no I/O policy of its own. It is shared by the daemon, the
-// tests and anyone who wants to write a awp peer in Go.
+// tests and anyone who wants to write an AWP peer in Go.
 package wire
 
 import (

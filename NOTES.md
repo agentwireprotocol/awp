@@ -1,6 +1,6 @@
 # Implementation notes for SPEC.md draft 1
 
-These notes come from building awp twice, independently. The Go reference daemon is in this repository. The single-file Python peer (`python/awp_peer.py`) was written from SPEC.md alone, without looking at the Go code. The two interoperate (`python/interop_test.py`). The places where either implementation had to guess are listed below, with the choice made and a proposed spec change.
+These notes come from building AWP twice, independently. The Go reference daemon is in this repository. The single-file Python peer (`python/awp_peer.py`) was written from SPEC.md alone, without looking at the Go code. The two interoperate (`python/interop_test.py`). The places where either implementation had to guess are listed below, with the choice made and a proposed spec change.
 
 ## Decisions on the open questions
 
@@ -8,7 +8,7 @@ These notes come from building awp twice, independently. The Go reference daemon
 |----------|----------|
 | 15, Q1: daemon or per session | **Daemon.** One per awp home (`~/.awp`), started on demand by any command, the MCP server or a hook. It owns the key, the tailcat listener, every connection and the store. Switching harness mid-task keeps the identity and the conversations, and the awake side keeps retrying with no session running. |
 | 15, Q2: getting inbound messages to the model | Four ways, in order of preference: (1) Claude Code hooks: SessionStart, UserPromptSubmit, PostToolUse and Stop (`awp hook ...`); (2) blocking waits the model calls (`awp wait`, MCP `awp_read` with `wait_seconds`, `until_state`); (3) `awp tail --once` at natural checkpoints; (4) MCP push through Claude Code *channels*. Channels are opt-in (`AWP_CHANNEL=1` plus `claude --channels ...`). Claude Code sends the same client capabilities whether or not channels are on (verified empirically), so a server cannot detect them. |
-| 15, Q3: ship tailcat or require it on PATH | **Embedded** as a Go library (`github.com/tailscale/tailcat`), so there is no second binary. awp listens on tunnel port 1, the port tailcat's pipe mode dials. That means `tailcat <address>` reaches a awp peer, and you can read its `hello` and type NDJSON at it. Verified. |
+| 15, Q3: ship tailcat or require it on PATH | **Embedded** as a Go library (`github.com/tailscale/tailcat`), so there is no second binary. awp listens on tunnel port 1, the port tailcat's pipe mode dials. That means `tailcat <address>` reaches an awp peer, and you can read its `hello` and type NDJSON at it. Verified. |
 | 16, Q2: outbox retention | 7 days, configurable (`outbox_ttl`). |
 | 16, Q3: in-band blobs | Kept in band, as drafted. Chunks are sent *before* the msg that references them (see "chunks" below). |
 | 16, Q4: multi-party | Not implemented. Connections are pairwise. |
@@ -123,7 +123,7 @@ Each item gives the issue, what the reference does, and a proposed change.
   Among one person's or one team's agents, that is the point. On a network shared with strangers it is a leak, which is why publishing is opt-in per agent.
 - *Opting out hides less than it seems.* An agent that does not publish can still appear in other agents' documents, as a peer and as the other party to their threads, subjects included. Opting out hides this agent's own account of its threads. It does not hide those conversations from the agents on the other side.
 - *Relaying is not optional.* There is no switch to stop a node forwarding other agents' documents yet.
-- *Who can read it.* Documents are signed, not encrypted. They travel only over awp's authenticated connections, but every admitted peer can read them. Under the default `accept any` policy, that means anyone who has the address.
+- *Who can read it.* Documents are signed, not encrypted. They travel only over AWP's authenticated connections, but every admitted peer can read them. Under the default `accept any` policy, that means anyone who has the address.
 
 *Proposal:* make presence an optional message family in the spec. Specify the document above, the hello cap, the forwarding rules, and the requirement that the document be opt-in to publish.
 

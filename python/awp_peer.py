@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# awp_peer.py -- an independent, single-file Python peer for the awp
-# peer-to-peer agent messaging protocol, SPEC.md "draft 1" (2026-09-25).
+# awp_peer.py -- an independent, single-file Python peer for the Agent Wire
+# Protocol (AWP), SPEC.md "draft 1" (2026-09-25).
 #
 # Written from the spec text alone, to serve as an interop test partner for the
 # Go reference implementation.  It speaks the non-tailcat bindings of section
@@ -2521,7 +2521,7 @@ async def amain(args) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         prog="awp_peer.py",
-        description="Independent Python peer for the awp protocol (draft 1) over TCP or Unix sockets.")
+        description="Independent Python peer for the Agent Wire Protocol (draft 1) over TCP or Unix sockets.")
     ap.add_argument("--state", default=os.path.join(os.path.expanduser("~"), ".awp"),
                     help="state directory (identity, outbox, seen map, blobs)")
     ap.add_argument("--name", default=None, help="name to announce in hello")

@@ -1,4 +1,4 @@
-// Package daemon runs a awp node as a long-lived local service and
+// Package daemon runs an awp node as a long-lived local service and
 // serves the control API that the CLI, the MCP server and harness hooks use.
 //
 // One daemon per awp home (~/.awp by default) owns the identity key,

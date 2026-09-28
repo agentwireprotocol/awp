@@ -182,7 +182,7 @@ func (c *Conn) handshake() error {
 		return fmt.Errorf("malformed hello: %v", err)
 	}
 	if h.V != wire.Version {
-		c.sendErrNow(wire.ErrVersion, h.ID, fmt.Sprintf("this peer speaks awp v%d", wire.Version))
+		c.sendErrNow(wire.ErrVersion, h.ID, fmt.Sprintf("this peer speaks AWP v%d", wire.Version))
 		return fmt.Errorf("peer speaks v%d", h.V)
 	}
 	pub, err := wire.ParseKey(h.Key)

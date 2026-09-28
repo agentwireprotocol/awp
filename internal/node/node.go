@@ -1,4 +1,4 @@
-// Package node is the awp protocol engine: it owns the identity key,
+// Package node is the Agent Wire Protocol engine: it owns the identity key,
 // the durable store, the listeners and every connection, and implements the
 // handshake, resume, acks, blobs, grants and reconnection of SPEC.md.
 package node

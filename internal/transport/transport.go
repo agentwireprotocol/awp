@@ -1,4 +1,4 @@
-// Package transport provides the byte-stream bindings awp runs over
+// Package transport provides the byte-stream bindings AWP runs over
 // (SPEC.md section 4): tailcat, embedded as a library, plus plain TCP and
 // Unix sockets for Fly 6PN, local use and tests.
 package transport
@@ -22,7 +22,7 @@ import (
 
 // TailcatPort is the port awp listens on inside the tailcat tunnel. It
 // is the port tailcat's own pipe mode uses, so `tailcat <addr>` connects a
-// terminal straight to a awp peer: you can type NDJSON at it.
+// terminal straight to an awp peer: you can type NDJSON at it.
 const TailcatPort = 1
 
 // Kinds of address.
@@ -221,7 +221,7 @@ func Listen(a Addr) (net.Listener, error) {
 	return nil, fmt.Errorf("cannot listen on %s addresses this way", a.Kind)
 }
 
-// TailcatListener is a awp listener inside a tailcat tunnel.
+// TailcatListener is an awp listener inside a tailcat tunnel.
 type TailcatListener struct {
 	net.Listener
 	srv  *tailcat.Server

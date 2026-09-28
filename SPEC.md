@@ -1,6 +1,10 @@
-# awp: a peer-to-peer agent messaging protocol
+# Agent Wire Protocol (AWP)
 
 Status: draft 1, 2026-09-25.
+
+The Agent Wire Protocol (AWP) is a peer-to-peer messaging protocol for coding agents. Two peers, each holding its own Ed25519 keypair, exchange threads of messages as NDJSON over one reliable byte stream, a tailcat tunnel by default. There is no server, no provider and no account. `awp` is the reference implementation: the daemon, CLI and plugin described in section 15.
+
+Draft 1 was first published under the name holler.
 
 ## 1. Why
 
@@ -13,7 +17,7 @@ It is the wrong shape for the case we care about: a coding agent on a laptop or 
 3. It has no connectivity story. It assumes reachability. Reachability is the hard part when both ends are behind NAT in ephemeral VMs.
 4. It is not cheap, free or easy. Six SDKs and three transport bindings is a lot of surface for "send a message to that agent over there".
 
-awp takes the opposite bets, borrowed from tailcat:
+AWP takes the opposite bets, borrowed from tailcat:
 
 - The transport solves connectivity. One agent runs `listen`, gets a shareable address, the other runs `connect`. No accounts, no DNS, no certs.
 - Once connected, both sides are equal. Either can start a thread, send a message or ask for work.
@@ -53,7 +57,7 @@ Non-goals
 Terms
 
 - Peer. An agent process holding an Ed25519 keypair. Identified by the public key.
-- Address. The tailcat string that reaches a listening peer. Opaque to awp. Possession of the address gets you as far as the hello handshake and nothing more.
+- Address. The tailcat string that reaches a listening peer. Opaque to AWP. Possession of the address gets you as far as the hello handshake and nothing more.
 - Connection. One tailcat (or other reliable ordered byte stream) between two peers, carrying NDJSON both ways.
 - Thread. A named sequence of messages between the two peers. Threads are the "task" abstraction. A thread has an id, a subject and a soft state.
 - Message. One turn in a thread, made of parts.
@@ -66,7 +70,7 @@ Terms
 
 - The listening peer runs `tailcat listen` and obtains an address. It shares the address out of band: CLI flag, environment variable, chat message, a line in a task prompt.
 - The connecting peer runs `tailcat connect <address>` and obtains a bidirectional byte stream.
-- awp runs over that stream. It does not care which side listened.
+- AWP runs over that stream. It does not care which side listened.
 
 4.2 Other bindings
 
@@ -74,7 +78,7 @@ Any reliable, ordered, bidirectional byte stream is a valid binding: a Unix sock
 
 4.3 Reconnection and sleep
 
-Connections drop. Sandboxes sleep, laptops close, tailcat links time out. awp treats this as the normal case, not an error. Resume is mandatory in v0; every peer implements it.
+Connections drop. Sandboxes sleep, laptops close, tailcat links time out. AWP treats this as the normal case, not an error. Resume is mandatory in v0; every peer implements it.
 
 - Each peer persists an outbox of sent messages and a per-thread "last seen" id to disk (`~/.awp/`). Memory-only state is not enough, because the process may be killed with the sandbox.
 - Either peer may reconnect using the same keys. Identity is the key, not the connection or the address.
@@ -380,12 +384,12 @@ Same pair. B's sprite sleeps while working. A keeps retrying and B wakes on conn
 - `auth` binds both hello lines, so an attacker cannot replay a hello or swap capabilities after the fact.
 - Grants have `exp`. Issuers SHOULD keep them short, an hour is plenty for a task.
 - `exec` and `fs:write` are remote code execution. A peer SHOULD require an explicit grant for them even from keys it otherwise trusts, and SHOULD log every such request.
-- Over non-tailcat bindings there is no transport encryption. Do not run awp over plaintext TCP across the internet.
+- Over non-tailcat bindings there is no transport encryption. Do not run AWP over plaintext TCP across the internet.
 - Prompt injection travels in `text` parts. That is the receiving agent's problem, same as any input. The protocol marks nothing as trusted.
 
 ## 14. Comparison to A2A
 
-| | A2A | awp |
+| | A2A | AWP |
 |---|---|---|
 | Roles | client and server | symmetric peers |
 | Reachability | assumes a URL | tailcat address, no infra |
@@ -408,7 +412,7 @@ The protocol is harness-neutral. Agents get it through one plugin packaged to th
 awp-plugin/
   plugin.json
   skills/
-    awp/SKILL.md          when and how to awp at another agent
+    awp/SKILL.md          when and how to message another agent
   bin/
     awp                   the peer: listen, connect, send, tail
   mcp/
@@ -438,7 +442,7 @@ awp-plugin/
 
 ## 16. Open questions
 
-1. Resolved: name is `awp`.
+1. Resolved: the protocol is the Agent Wire Protocol (AWP); the reference implementation is `awp`.
 2. Resolved: resume is mandatory. Remaining sub-question: how long should the outbox be retained for a peer that never comes back? Proposal: until the thread is `closed` or 7 days.
 3. Should blobs be in-band (this draft) or should the protocol point at a second tailcat address for bulk transfer?
 4. Multi-party. Is a hub peer that relays between many peers a good enough answer, or do we want native rooms?

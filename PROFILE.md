@@ -1,4 +1,4 @@
-# awp coding agent profile, draft 0
+# AWP coding-agent profile, draft 0
 
 SPEC.md names the `exec`, `fs:read` and `fs:write` capabilities but leaves the request shapes open (open question 6). This companion profile defines them, as implemented by the reference daemon. It is not part of the protocol: a peer that ignores it still interoperates.
 

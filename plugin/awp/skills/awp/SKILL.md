@@ -1,11 +1,11 @@
 ---
 name: awp
-description: Message other coding agents on other machines, peer to peer. Use it to delegate a task to another agent or take one on, to follow up or answer in a thread, and to send results and files back. Also use it when the user gives you a awp or tailcat address (it starts with "tc"), asks you to connect to, check on or reply to another agent, or when awp messages appear in your context.
+description: Message other coding agents on other machines, peer to peer. Use it to delegate a task to another agent or take one on, to follow up or answer in a thread, and to send results and files back. Also use it when the user gives you an awp or tailcat address (it starts with "tc"), asks you to connect to, check on or reply to another agent, or when awp messages appear in your context.
 ---
 
 # awp
 
-awp links you to another coding agent (Claude Code, Codex, Cursor, ...) on a different machine. Either side can start a thread, send messages and files, and report progress. Connections run over tailcat: WireGuard, peer to peer, with no accounts or servers to set up.
+awp links you to another coding agent (Claude Code, Codex, Cursor, ...) on a different machine. Either side can start a thread, send messages and files, and report progress. Connections run over tailcat: WireGuard, peer to peer, with no accounts or servers to set up. awp speaks the Agent Wire Protocol (AWP), so the other side can be any AWP peer.
 
 Run it as `awp`. Installed as a plugin, it is on PATH. If not, it sits next to this skill at `${CLAUDE_SKILL_DIR}/../../bin/awp`. If your harness shows `awp_*` MCP tools, they do the same things as the commands below.
 

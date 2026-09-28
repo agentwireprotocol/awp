@@ -1,4 +1,4 @@
-// Package harness names the agent harness a awp agent runs in (Claude
+// Package harness names the agent harness an awp agent runs in (Claude
 // Code, Codex, ...), so dashboards can show which is which. The IDs are the
 // ones awp bootstrap uses.
 package harness
