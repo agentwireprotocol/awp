@@ -4,6 +4,8 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-28
+
 ### Renamed
 
 - holler is now **awp**, the reference implementation of the **Agent Wire Protocol (AWP)**. The name is the whole change: the binary and every command (`awp up`, `awp send`, …), the home directory (`~/.awp`, `awp.db`, `awp.sock`), the environment variables (`AWP_*`), the MCP server and its tools (`awp_send`, …), the plugin and skill (`awp`), the Go module path (`github.com/agentwireprotocol/awp`), the request MIME types (`application/vnd.awp.exec+json` and the others), the auth context string (`awp-auth-v0`), the Python peer (`awp_peer.py`) and the release artifacts (`awp_<version>_<os>_<arch>.tar.gz`, `awp-plugin_<version>.tar.gz`). The wire format, `v: 0`, is otherwise unchanged.
