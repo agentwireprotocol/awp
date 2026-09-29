@@ -7,6 +7,8 @@ A [herdr](https://herdr.dev) plugin for the Agent Wire Protocol. It watches this
 - **A live inbox.** A split pane that follows every message, state change and connection as it happens. Watching it marks nothing read.
 - **Status and controls.** A popup with the identity, address, peers and threads, and keys to go online, connect to an address, bind an agent or open the `awp web` dashboard.
 
+The full documentation is at https://docs.agentwireprotocol.com/plugins/herdr.
+
 The plugin never brings awp online by itself. The watcher waits until something starts the daemon: `awp up`, an agent using awp, or the plugin's "go online" action.
 
 ## Install

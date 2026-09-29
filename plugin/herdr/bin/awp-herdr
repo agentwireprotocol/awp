@@ -24,7 +24,7 @@ seed_config() {
 	[ -f "$config" ] && return
 	cat >"$config" <<'EOF'
 # awp for herdr. KEY=VALUE lines; # starts a comment. Takes effect on the
-# next action or event; restart the watcher for NOTIFY and AUTOSTART.
+# next action or event; restart the watcher for AWP_BIN and AWP_HOME.
 
 # The awp binary, when it is not on the herdr server's PATH.
 #AWP_BIN=/home/me/.local/bin/awp
