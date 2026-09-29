@@ -178,6 +178,15 @@ func TestAcceptThroughHelper(t *testing.T) {
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(30 * time.Second))
 	r := bufio.NewReader(c)
+	pre, _ := r.ReadBytes('\n')
+	var p struct {
+		Tunnel struct{ Remote string } `json:"tunnel"`
+	}
+	nk, _ := wire.ParseKey(n.Key())
+	want, _ := tunnel.X25519Public(nk)
+	if json.Unmarshal(pre, &p); p.Tunnel.Remote != want.String() {
+		t.Fatalf("preamble %s, want remote %s", pre, want)
+	}
 	fmt.Fprintln(c, s.hello())
 	h := readType(t, r, wire.THello)
 	if !strings.Contains(string(h), n.Key()) {
@@ -216,7 +225,7 @@ func TestAcceptThroughHelper(t *testing.T) {
 	}
 	defer fc.Close()
 	fc.SetDeadline(time.Now().Add(20 * time.Second))
-	if b, _ := io.ReadAll(fc); strings.Contains(string(b), "hello") {
+	if b, _ := io.ReadAll(fc); strings.Contains(string(b), `"t":"hello"`) {
 		t.Fatalf("the SDK got the lying hello: %s", b)
 	}
 	st.SetDeadline(time.Now().Add(20 * time.Second))

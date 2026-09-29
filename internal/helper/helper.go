@@ -25,7 +25,13 @@
 // replaces the listener's pre-shared key and answers with the new address.
 //
 // Accepting: each stream a peer opens is connected to the SDK's forward
-// socket and spliced, unchanged.
+// socket. The helper first writes one line of its own,
+//
+//	{"tunnel": {"remote": "<the peer's X25519 key, base64url>"}}
+//
+// so the SDK knows which grants to present in its hello before the peer's
+// hello arrives; then it splices the stream unchanged. A dial reply carries
+// the same "remote".
 //
 // In both directions the helper reads the peer's first line and, if it is
 // a hello whose key is not the tunnel's, sends err auth and closes, so the
@@ -180,6 +186,7 @@ type request struct {
 type dialReply struct {
 	OK      bool   `json:"ok"`
 	Key     string `json:"key,omitempty"`
+	Remote  string `json:"remote,omitempty"`
 	Via     string `json:"via,omitempty"`
 	Address string `json:"address,omitempty"`
 	Public  string `json:"public,omitempty"`
@@ -246,7 +253,7 @@ func dial(ctx context.Context, cfg Config, tu *tunnel.Tunnel, c net.Conn) {
 		return
 	}
 	defer s.Close()
-	if err := reply(dialReply{OK: true, Key: addrs[0].KeyString(), Via: s.Via()}); err != nil {
+	if err := reply(dialReply{OK: true, Key: addrs[0].KeyString(), Remote: s.Remote.String(), Via: s.Via()}); err != nil {
 		return
 	}
 	splice(cfg, &bufConn{Conn: c, r: br}, s)
@@ -299,6 +306,10 @@ func forward(cfg Config, s *tunnel.Stream) {
 		return
 	}
 	defer c.Close()
+	pre, _ := json.Marshal(map[string]any{"tunnel": map[string]string{"remote": s.Remote.String()}})
+	if _, err := c.Write(append(pre, '\n')); err != nil {
+		return
+	}
 	splice(cfg, c, s)
 }
 
