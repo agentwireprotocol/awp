@@ -37,7 +37,7 @@ SPEC.md section 14 has the longer A2A comparison.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/agentwireprotocol/awp/main/install.sh | sh
+curl -fsSL https://agentwireprotocol.com/install.sh | sh
 ```
 
 The script:
