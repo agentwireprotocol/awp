@@ -29,7 +29,7 @@ interop: build
 	cd python && AWP_BIN=$(CURDIR)/bin/awp python3 -m unittest -v interop_test
 
 # The conformance suite (awp conform) against the Python peer, both ways.
-# The Go node runs it in its own tests (internal/conformance).
+# The Go node runs it in its own tests (conformance).
 conformance: build
 	AWP_BIN=$(CURDIR)/bin/awp scripts/conformance.sh
 

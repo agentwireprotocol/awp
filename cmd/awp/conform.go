@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentwireprotocol/awp/internal/conformance"
+	"github.com/agentwireprotocol/awp/conformance"
 	"github.com/agentwireprotocol/awp/schema"
 	"github.com/agentwireprotocol/awp/wire"
 )

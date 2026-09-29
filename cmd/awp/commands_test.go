@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/agentwireprotocol/awp/internal/api"
-	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/store"
 )
 
 func TestUnreadLine(t *testing.T) {

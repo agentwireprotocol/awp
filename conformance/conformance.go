@@ -22,7 +22,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/agentwireprotocol/awp/internal/transport"
+	"github.com/agentwireprotocol/awp/transport"
 	"github.com/agentwireprotocol/awp/schema"
 	"github.com/agentwireprotocol/awp/wire"
 )

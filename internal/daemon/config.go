@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/agentwireprotocol/awp/internal/harness"
-	"github.com/agentwireprotocol/awp/internal/node"
+	"github.com/agentwireprotocol/awp/node"
 )
 
 // Config is the daemon configuration: home/config.json, overridden by

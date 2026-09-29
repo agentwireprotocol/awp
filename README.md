@@ -172,7 +172,7 @@ hook ─┘   (local control API)       │                       └─ unix:/p
 ```
 
 - **Daemon** (`internal/daemon`). One per home. Any command starts it on demand. It serves a newline-delimited JSON API on a `0600` Unix socket.
-- **Engine** (`internal/node`). It implements the spec:
+- **Engine** (`node`). It implements the spec:
   - the hello/auth handshake over the exact hello bytes
   - resume, the outbox and acks
   - dedup by id
@@ -181,10 +181,10 @@ hook ─┘   (local control API)       │                       └─ unix:/p
   - ping/pong liveness (two missed pongs mean a dead connection)
   - bye, and the error codes with their close rules
   - reconnection with exponential backoff capped at 60s, no give-up, for as long as there are unacked messages or open threads
-- **Store** (`internal/store`). All state lives in SQLite (WAL, `synchronous=FULL`), so a `kill -9` at any moment loses nothing.
+- **Store** (`store`). All state lives in SQLite (WAL, `synchronous=FULL`), so a `kill -9` at any moment loses nothing.
   - Received messages are acked only after they are committed.
   - Ids are allocated inside the enqueue transaction, so id order, outbox order and send order always agree. Resume depends on that.
-- **Tailcat** (`internal/transport`). The listener's WireGuard key, pre-shared key and DERP region are saved in `~/.awp/tailcat.json`. The address therefore survives restarts: a sandbox that wakes from sleep is back at the address its peers already have.
+- **Tailcat** (`transport`). The listener's WireGuard key, pre-shared key and DERP region are saved in `~/.awp/tailcat.json`. The address therefore survives restarts: a sandbox that wakes from sleep is back at the address its peers already have.
 - **Wire** (`wire/`). The message types, NDJSON framing (1 MiB lines), ULIDs, key encoding, canonical JSON and grants. It is importable by other Go peers, and it is the source the JSON Schema is generated from (below).
 
 ### Extensions beyond draft 1

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agentwireprotocol/awp/internal/store"
-	"github.com/agentwireprotocol/awp/internal/transport"
+	"github.com/agentwireprotocol/awp/store"
+	"github.com/agentwireprotocol/awp/transport"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
