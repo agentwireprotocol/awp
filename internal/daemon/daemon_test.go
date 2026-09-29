@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -39,7 +40,11 @@ func TestTouches(t *testing.T) {
 // testDaemon serves a node listening on a Unix socket in its own home.
 func testDaemon(t *testing.T, name string) *Daemon {
 	t.Helper()
-	home := t.TempDir()
+	home, err := os.MkdirTemp("", "awpd") // short: unix socket paths are limited
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(home) })
 	n, err := node.Open(node.Config{
 		Home:             home,
 		Name:             name,
@@ -67,7 +72,7 @@ func testDaemon(t *testing.T, name string) *Daemon {
 func TestConnectExisting(t *testing.T) {
 	a, b := testDaemon(t, "a"), testDaemon(t, "b")
 	ctx := context.Background()
-	addr := b.n.Addresses()[0]
+	addr := b.n.Address().String()
 	res, err := a.connect(ctx, api.ConnectParams{Address: addr})
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +99,7 @@ func TestConnectExisting(t *testing.T) {
 func TestReadNoMark(t *testing.T) {
 	a, b := testDaemon(t, "a"), testDaemon(t, "b")
 	ctx := context.Background()
-	if _, err := a.connect(ctx, api.ConnectParams{Address: b.n.Addresses()[0]}); err != nil {
+	if _, err := a.connect(ctx, api.ConnectParams{Address: b.n.Address().String()}); err != nil {
 		t.Fatal(err)
 	}
 	res, err := a.n.Send(node.SendRequest{Peer: b.n.Key(), Subject: "Read", Parts: []wire.Part{{K: wire.PartText, Text: "needle"}}})
@@ -131,7 +136,7 @@ func link(t *testing.T, from, to *Daemon) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := from.connect(ctx, api.ConnectParams{Address: to.n.Addresses()[0]}); err != nil {
+	if _, err := from.connect(ctx, api.ConnectParams{Address: to.n.Address().String()}); err != nil {
 		t.Fatalf("connect %s -> %s: %v", from.n.Name(), to.n.Name(), err)
 	}
 	waitFor(t, to.n, "inbound connection", func() bool { return to.n.Connected(from.n.Key()) })

@@ -1,5 +1,5 @@
 // Package mcp serves awp as a Model Context Protocol server over stdio,
-// for harnesses that prefer tools to shell commands (spec section 15). The
+// for harnesses that prefer tools to shell commands (spec section 18). The
 // tools call the same daemon the CLI does, so behavior is identical.
 //
 // When the client registers for Claude Code channel notifications (the
@@ -213,7 +213,7 @@ func str(desc string) map[string]any { return map[string]any{"type": "string", "
 
 var tools = []tool{
 	{"awp_listen", "Start this machine's awp peer if needed and return its identity and the address to share with another agent (via your user or a task prompt). The address is a secret bearer credential for reaching you.", obj(map[string]any{})},
-	{"awp_connect", "Connect to another agent's awp address (tc..., tcp:host:port or unix:/path), or reconnect to a known peer by name. The connection is kept alive and resumed after drops.", obj(map[string]any{"address": str("address the other agent shared, or a known peer's name")}, "address")},
+	{"awp_connect", "Connect to another agent's awp address (awp1...), or reconnect to a known peer by name. The connection is kept alive and resumed after drops.", obj(map[string]any{"address": str("address the other agent shared, or a known peer's name")}, "address")},
 	{"awp_send", "Send a message to a peer. Without `thread`, opens a new thread; give it a `subject` that reads like a task title. To reply, pass the thread id. Queued (never fails) if the peer is away.",
 		obj(map[string]any{
 			"peer":             str("peer name, alias, key prefix or address; optional when thread is given"),
@@ -289,8 +289,8 @@ func (s *Server) dispatch(ctx context.Context, c *control.Client, name string, r
 		fmt.Fprintf(&b, "You are %s, key %s.\n", st.Name, st.Key)
 		if addr := st.ShareAddress(); addr != "" {
 			fmt.Fprintf(&b, "Address to share: %s\n", addr)
-		} else if st.TailcatErr != "" {
-			fmt.Fprintf(&b, "No address yet (tailcat: %s)\n", st.TailcatErr)
+		} else if e := st.PendingError(); e != "" {
+			fmt.Fprintf(&b, "No address yet (%s)\n", e)
 		}
 		if len(st.Peers) == 0 {
 			b.WriteString("No peers yet.\n")
@@ -450,7 +450,7 @@ func waitStatus(ctx context.Context, c *control.Client, forAddress bool) (*api.S
 		if err := c.Call(ctx, "status", nil, &st); err != nil {
 			return nil, err
 		}
-		if !forAddress || st.Tailcat != "" || !st.TailcatWant || time.Now().After(deadline) {
+		if !forAddress || st.Settled() || time.Now().After(deadline) {
 			return &st, nil
 		}
 		select {

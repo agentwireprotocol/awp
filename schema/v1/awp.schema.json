@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentwireprotocol.com/schema/v0/awp.schema.json",
+  "$id": "https://agentwireprotocol.com/schema/v1/awp.schema.json",
   "$ref": "#/$defs/Message",
   "$defs": {
     "Ack": {
@@ -39,54 +39,6 @@
       ],
       "title": "ack",
       "description": "Ack says the msg or state named by re is durably received (section 9.2). Acks drive outbox pruning and are not acked themselves."
-    },
-    "Auth": {
-      "properties": {
-        "t": {
-          "type": "string",
-          "const": "auth",
-          "description": "`t` is the message type."
-        },
-        "id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
-        },
-        "ts": {
-          "type": "string",
-          "format": "date-time",
-          "description": "`ts` is an RFC 3339 UTC timestamp."
-        },
-        "th": {
-          "type": "string",
-          "description": "`th` is the thread id. Required for msg, state and ack."
-        },
-        "re": {
-          "type": "string",
-          "description": "`re` is the id of the message this one responds to."
-        },
-        "sig": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9_-]+$",
-          "description": "`sig` is the Ed25519 signature, base64url, over \"awp-auth-v0\" || 0x00 || my hello line || 0x00 || peer hello line, the lines as sent and received without the newline."
-        },
-        "grants": {
-          "items": {
-            "$ref": "#/$defs/Grant"
-          },
-          "type": "array",
-          "description": "`grants` are grant objects (section 10.2) the sender presents."
-        }
-      },
-      "type": "object",
-      "required": [
-        "t",
-        "id",
-        "ts",
-        "sig"
-      ],
-      "title": "auth",
-      "description": "Auth proves possession of the key sent in hello (section 7.2)."
     },
     "BlobPart": {
       "properties": {
@@ -159,7 +111,7 @@
         "ts"
       ],
       "title": "bye",
-      "description": "Bye is a graceful close (section 9.6). After sending it a peer sends nothing else and closes after the other side's bye or after 5 seconds."
+      "description": "Bye is a graceful close (section 12.6). After sending it a peer sends nothing else and closes after the other side's bye or after 5 seconds."
     },
     "Chunk": {
       "properties": {
@@ -216,7 +168,7 @@
         "data"
       ],
       "title": "chunk",
-      "description": "Chunk carries part of a blob (section 9.3). Chunks of one blob arrive in order; chunks of different blobs may interleave. A chunk carries th when the blob belongs to a thread, so that resume replays it like any other threaded message."
+      "description": "Chunk carries part of a blob (section 12.3). Chunks of one blob arrive in order; chunks of different blobs may interleave. A chunk carries th when the blob belongs to a thread, so that resume replays it like any other threaded message."
     },
     "CodePart": {
       "properties": {
@@ -263,7 +215,7 @@
         "data"
       ],
       "title": "data part",
-      "description": "Inline JSON, with its MIME type. Requests (section 10.1) are data parts of a vnd.awp type."
+      "description": "Inline JSON, with its MIME type. Requests (section 13.1) are data parts of a vnd.awp type."
     },
     "Envelope": {
       "properties": {
@@ -296,7 +248,7 @@
         "id",
         "ts"
       ],
-      "description": "Envelope holds the fields every line carries (section 6). The type-specific fields sit beside them at the top level."
+      "description": "Envelope holds the fields every line carries (section 9). The type-specific fields sit beside them at the top level."
     },
     "Err": {
       "properties": {
@@ -327,12 +279,13 @@
           "type": "string",
           "enum": [
             "bad_frame",
+            "too_large",
             "version",
             "auth",
+            "refused",
             "unsupported",
             "forbidden",
             "blob_refused",
-            "too_large",
             "internal"
           ],
           "description": "`code` is the error code."
@@ -354,7 +307,7 @@
         "code"
       ],
       "title": "err",
-      "description": "Err reports a problem (section 9.7). Whether it closes the connection depends on the code: bad_frame, version, auth and too_large do, unsupported, forbidden, blob_refused and internal do not."
+      "description": "Err reports a problem (section 12.7). Whether it closes the connection depends on the code: bad_frame, too_large, version, auth and refused do, unsupported, forbidden, blob_refused and internal do not."
     },
     "Grant": {
       "properties": {
@@ -373,7 +326,7 @@
             "type": "string"
           },
           "type": "array",
-          "description": "`caps` are the capability strings granted (section 10.1)."
+          "description": "`caps` are the capability strings granted (section 13.1)."
         },
         "exp": {
           "type": "string",
@@ -405,7 +358,7 @@
         "nonce",
         "sig"
       ],
-      "description": "GrantObject is the wire form of a grant (section 10.2): a signed statement that sub may use caps until exp, honored by iss and by whoever trusts iss. sig is iss's Ed25519 signature over the canonical JSON of the object without sig: keys sorted, no whitespace, UTF-8."
+      "description": "GrantObject is the wire form of a grant (section 13.2): a signed statement that sub may use caps until exp, honored by iss and by whoever trusts iss. sig is iss's Ed25519 signature over the canonical JSON of the object without sig: keys sorted, no whitespace, UTF-8."
     },
     "GrantMsg": {
       "properties": {
@@ -434,7 +387,7 @@
         },
         "grant": {
           "$ref": "#/$defs/Grant",
-          "description": "`grant` is the grant object (section 10.2)."
+          "description": "`grant` is the grant object (section 13.2)."
         }
       },
       "type": "object",
@@ -445,7 +398,7 @@
         "grant"
       ],
       "title": "grant",
-      "description": "GrantMsg delivers a grant after the handshake (section 10.3)."
+      "description": "GrantMsg delivers a grant after the handshake (section 13.3)."
     },
     "Hello": {
       "properties": {
@@ -475,28 +428,23 @@
         "v": {
           "type": "integer",
           "minimum": 0,
-          "description": "`v` is the protocol major version. A peer that sees a version it does not speak sends err version and closes."
+          "description": "`v` is the protocol major version, 1 for draft 2. A peer that sees a version it does not speak sends err version and closes."
         },
         "key": {
           "type": "string",
           "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
-          "description": "`key` is the long-term Ed25519 public key. Its bytes are the peer's identity."
+          "description": "`key` is the sender's Ed25519 identity key. It must be the key on the other end of the tunnel (section 13.1), or the receiver sends err auth and closes."
         },
         "name": {
           "type": "string",
           "description": "`name` is how the peer calls itself, \"harness@host\" by convention."
-        },
-        "nonce": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9_-]+$",
-          "description": "`nonce` is 32 random bytes, base64url. The auth signature covers the whole hello line, nonce included."
         },
         "caps": {
           "items": {
             "type": "string"
           },
           "type": "array",
-          "description": "`caps` lists the supported message families beyond the mandatory chat and resume: blob, grant, introduce, and any extension.",
+          "description": "`caps` lists the supported message families beyond the mandatory core: blob, grant, introduce, and any extension.",
           "examples": [
             [
               "chat",
@@ -508,11 +456,19 @@
         },
         "about": {
           "type": "string",
-          "description": "`about` is free text for the other agent's context. It is not authenticated until auth completes."
+          "description": "`about` is free text for the other agent's context."
         },
         "addr": {
           "type": "string",
-          "description": "`addr` is an extension: an address at which the sender can be reached, so that either side can reconnect (section 4.3). Peers that do not know it ignore it, as section 5 requires."
+          "pattern": "^awp1[A-Za-z0-9_-]+$",
+          "description": "`addr` is the sender's own address without its pre-shared key, so the other side can reconnect to it later (section 13.3)."
+        },
+        "grants": {
+          "items": {
+            "$ref": "#/$defs/Grant"
+          },
+          "type": "array",
+          "description": "`grants` are grant objects (section 13.2) the sender presents."
         },
         "shares": {
           "items": {
@@ -528,11 +484,10 @@
         "id",
         "ts",
         "v",
-        "key",
-        "nonce"
+        "key"
       ],
       "title": "hello",
-      "description": "Hello is the first line each side sends, at once, without waiting for the other (section 7.1)."
+      "description": "Hello is the first line each side sends, at once, without waiting for the other (section 10.1)."
     },
     "IntroPeer": {
       "properties": {
@@ -547,7 +502,8 @@
         },
         "address": {
           "type": "string",
-          "description": "Address is where the introduced peer listens, a hint: the key is the identity."
+          "pattern": "^awp1[A-Za-z0-9_-]+$",
+          "description": "Address is the introduced peer's address (section 9). It carries the pre-shared key only when the introducer holds one."
         }
       },
       "type": "object",
@@ -598,15 +554,12 @@
         "peer"
       ],
       "title": "introduce",
-      "description": "Introduce hands the recipient another peer's identity and address plus a grant issued by the introducer (section 10.4). The introduced peer honors the grant only if it trusts the introducer with introduce."
+      "description": "Introduce hands the recipient another peer's identity and address plus a grant issued by the introducer (section 13.4). The introduced peer honors the grant only if it trusts the introducer with introduce."
     },
     "Message": {
       "oneOf": [
         {
           "$ref": "#/$defs/Hello"
-        },
-        {
-          "$ref": "#/$defs/Auth"
         },
         {
           "$ref": "#/$defs/Resume"
@@ -651,7 +604,7 @@
           "$ref": "#/$defs/Private"
         }
       ],
-      "description": "One line of a connection: a message of SPEC.md sections 7 to 10, or one of the extensions marked x-extension. A receiver ignores lines of a type it does not know, after checking the envelope."
+      "description": "One line of a connection: a message of SPEC.md sections 10 to 13, or one of the extensions marked x-extension. A receiver ignores lines of a type it does not know, after checking the envelope."
     },
     "Mirror": {
       "properties": {
@@ -773,7 +726,7 @@
         "th"
       ],
       "title": "msg",
-      "description": "Msg is one turn in a thread (section 9.1). The first msg with a new th creates the thread."
+      "description": "Msg is one turn in a thread (section 12.1). The first msg with a new th creates the thread."
     },
     "Part": {
       "oneOf": [
@@ -825,7 +778,7 @@
         "ts"
       ],
       "title": "ping",
-      "description": "Ping is a liveness probe (section 9.4): sent when idle for 30 seconds by convention; two missed pongs mean the connection is dead."
+      "description": "Ping is a liveness probe (section 12.4): sent when idle for 30 seconds by convention; two missed pongs mean the connection is dead."
     },
     "Pong": {
       "properties": {
@@ -1152,7 +1105,7 @@
         "seen"
       ],
       "title": "resume",
-      "description": "Resume is sent by both sides after every handshake (section 9.5). The receiver replays its outbox messages the sender has not seen."
+      "description": "Resume is sent by both sides after every handshake (section 12.5). The receiver replays its outbox messages the sender has not seen."
     },
     "State": {
       "properties": {
@@ -1205,7 +1158,7 @@
         "th"
       ],
       "title": "state",
-      "description": "State is the sender's view of a thread's soft state (section 8.1). The two sides can disagree."
+      "description": "State is the sender's view of a thread's soft state (section 11.1). The two sides can disagree."
     },
     "TextPart": {
       "properties": {
@@ -1229,6 +1182,6 @@
     }
   },
   "$comment": "Generated from the wire package of github.com/agentwireprotocol/awp by go generate ./wire. Do not edit by hand.",
-  "title": "Agent Wire Protocol v0",
+  "title": "Agent Wire Protocol v1",
   "description": "The messages of the Agent Wire Protocol, one JSON object per line (SPEC.md). Every message is an envelope (t, id, ts, and th or re where they apply) with the fields of its type beside it."
 }

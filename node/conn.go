@@ -13,6 +13,7 @@ import (
 
 	"github.com/agentwireprotocol/awp/internal/version"
 	"github.com/agentwireprotocol/awp/store"
+	"github.com/agentwireprotocol/awp/tunnel"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
@@ -23,6 +24,7 @@ var helloCaps = []string{"chat", "blob", "grant", "introduce", wire.TPresence, w
 // Conn is one connection to a peer, from hello to close.
 type Conn struct {
 	n        *Node
+	stream   *tunnel.Stream
 	raw      net.Conn
 	r        *wire.Reader
 	w        *wire.Writer
@@ -64,14 +66,15 @@ type ctrlItem struct {
 	after func() // runs after the line is written
 }
 
-func newConn(n *Node, raw net.Conn, outbound bool, via string) *Conn {
+func newConn(n *Node, s *tunnel.Stream, outbound bool) *Conn {
 	return &Conn{
 		n:          n,
-		raw:        raw,
-		r:          wire.NewReader(raw),
-		w:          wire.NewWriter(raw),
+		stream:     s,
+		raw:        s,
+		r:          wire.NewReader(s),
+		w:          wire.NewWriter(s),
 		outbound:   outbound,
-		via:        via,
+		via:        s.Via(),
 		ctrl:       make(chan ctrlItem, 4096),
 		pumpCh:     make(chan struct{}, 1),
 		accepted:   make(chan struct{}),
@@ -150,25 +153,24 @@ func (e errPeerSaid) Error() string {
 	return fmt.Sprintf("peer sent err %s: %s", e.e.Code, e.e.Detail)
 }
 
-// handshake runs section 7: both sides send hello at once, then auth over
-// the transcript of both hellos.
+// handshake runs section 10: both sides send hello at once. The tunnel
+// already authenticated the other side's key; hello must name that key.
 func (c *Conn) handshake() error {
 	n := c.n
 	c.raw.SetDeadline(time.Now().Add(n.cfg.HandshakeTimeout))
 	defer c.raw.SetDeadline(time.Time{})
 
-	myHello, err := c.writeNow(wire.Hello{
+	if _, err := c.writeNow(wire.Hello{
 		Envelope: wire.Envelope{T: wire.THello, ID: n.ids.New(), TS: wire.Now()},
 		V:        wire.Version,
 		Key:      n.key,
 		Name:     n.cfg.Name,
-		Nonce:    wire.Nonce(32),
 		Caps:     helloCaps,
 		About:    n.about(),
 		Addr:     n.advertised(),
+		Grants:   n.grantsToPresent(c.stream),
 		Shares:   n.ShareWith(),
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("send hello: %w", err)
 	}
 
@@ -191,33 +193,15 @@ func (c *Conn) handshake() error {
 		return fmt.Errorf("bad hello key: %v", err)
 	}
 	if h.Key == n.key {
-		c.sendErrNow(wire.ErrAuth, h.ID, "connected to self")
-		return errors.New("connected to self")
+		c.sendErrNow(wire.ErrAuth, h.ID, "hello carries this peer's own key")
+		return errors.New("hello carries our own key")
 	}
-	c.peerKey, c.peerPub, c.hello = h.Key, pub, h
-
-	if _, err := c.writeNow(wire.Auth{
-		Envelope: wire.Envelope{T: wire.TAuth, ID: n.ids.New(), TS: wire.Now()},
-		Sig:      wire.SignAuth(n.priv, myHello, peerHello),
-		Grants:   n.grantsToPresent(h.Key),
-	}); err != nil {
-		return fmt.Errorf("send auth: %w", err)
+	if !c.stream.Is(pub) {
+		c.sendErrNow(wire.ErrAuth, h.ID, "hello key is not the key on the other end of the tunnel")
+		return fmt.Errorf("hello key %s does not match the tunnel", wire.ShortKey(h.Key))
 	}
-
-	authLine, env, err := c.readHandshakeLine(wire.TAuth)
-	if err != nil {
-		return err
-	}
-	var a wire.Auth
-	if err := wire.Decode(authLine, &a); err != nil {
-		c.sendErrNow(wire.ErrBadFrame, env.ID, "malformed auth")
-		return fmt.Errorf("malformed auth: %v", err)
-	}
-	if err := wire.VerifyAuth(pub, a.Sig, peerHello, myHello); err != nil {
-		c.sendErrNow(wire.ErrAuth, a.ID, "auth signature does not verify")
-		return fmt.Errorf("auth from %s: %v", wire.ShortKey(h.Key), err)
-	}
-	c.peerGrants = a.Grants
+	c.peerKey, c.peerPub, c.hello, c.peerGrants = h.Key, pub, h, h.Grants
+	c.via = c.stream.Via()
 	return nil
 }
 
@@ -243,11 +227,7 @@ func (c *Conn) readHandshakeLine(want string) ([]byte, wire.Envelope, error) {
 		return nil, env, errPeerSaid{e}
 	}
 	if env.T != want {
-		code := wire.ErrBadFrame
-		if want == wire.TAuth {
-			code = wire.ErrAuth
-		}
-		c.sendErrNow(code, env.ID, "expected "+want+", got "+env.T)
+		c.sendErrNow(wire.ErrBadFrame, env.ID, "expected "+want+", got "+env.T)
 		return nil, env, fmt.Errorf("expected %s, got %q", want, env.T)
 	}
 	return line, env, nil
@@ -435,7 +415,7 @@ func (c *Conn) writer() {
 	}
 }
 
-// pinger implements section 9.4: ping when idle, and two missed pongs mean
+// pinger implements section 12.4: ping when idle, and two missed pongs mean
 // the connection is dead. Any received line counts as proof of life.
 func (c *Conn) pinger() {
 	interval := c.n.cfg.PingInterval
@@ -481,7 +461,7 @@ func (c *Conn) onPong(re string) {
 // RTT is the last measured round trip time, or zero.
 func (c *Conn) RTT() time.Duration { return time.Duration(c.rtt.Load()) }
 
-// sendBye starts a graceful close (section 9.6): nothing else is sent, and
+// sendBye starts a graceful close (section 12.6): nothing else is sent, and
 // the connection closes on the peer's bye or after five seconds.
 func (c *Conn) sendBye(reason string) {
 	if c.byeSent.Swap(true) {
@@ -494,8 +474,8 @@ func (c *Conn) sendBye(reason string) {
 
 // serveConn runs a connection from handshake to close. For connections we
 // dialed, done receives the handshake outcome.
-func (n *Node) serveConn(raw net.Conn, outbound bool, via string, done chan<- dialResult) {
-	c := newConn(n, raw, outbound, via)
+func (n *Node) serveConn(s *tunnel.Stream, outbound bool, done chan<- dialResult) {
+	c := newConn(n, s, outbound)
 	err := c.handshake()
 	if err == nil {
 		err = n.afterHandshake(c)
@@ -505,7 +485,7 @@ func (n *Node) serveConn(raw net.Conn, outbound bool, via string, done chan<- di
 	}
 	if err == nil && done != nil {
 		// A listener that refuses us (admission policy) says so with an err
-		// right after auth, so the dial only counts once the peer's resume,
+		// right after hello, so the dial only counts once the peer's resume,
 		// or anything other than an err, has arrived.
 		go func() {
 			select {
@@ -520,14 +500,14 @@ func (n *Node) serveConn(raw net.Conn, outbound bool, via string, done chan<- di
 	}
 	if err != nil {
 		if c.peerKey != "" {
-			n.logf("connection with %s via %s failed: %v", wire.ShortKey(c.peerKey), via, err)
+			n.logf("connection with %s via %s failed: %v", wire.ShortKey(c.peerKey), c.via, err)
 		} else {
-			n.logf("connection via %s failed: %v", via, err)
+			n.logf("connection via %s failed: %v", c.via, err)
 		}
 		c.Close(err.Error())
 		return
 	}
-	n.logf("connected to %s (%s) via %s", c.hello.Name, wire.ShortKey(c.peerKey), via)
+	n.logf("connected to %s (%s) via %s", c.hello.Name, wire.ShortKey(c.peerKey), c.via)
 	c.run()
 	n.logf("disconnected from %s (%s): %s", c.hello.Name, wire.ShortKey(c.peerKey), c.closeReason())
 	n.deactivate(c)
@@ -542,11 +522,8 @@ func (n *Node) afterHandshake(c *Conn) error {
 		if err := store.TouchPeer(q, c.peerKey, h.Name, h.About, h.Caps, now); err != nil {
 			return err
 		}
-		if c.outbound {
-			return store.AddAddr(q, c.peerKey, c.via, "connect", now)
-		}
-		if h.Addr != "" {
-			return store.AddAddr(q, c.peerKey, h.Addr, "hello", now)
+		if a, err := tunnel.ParseAddress(h.Addr); err == nil && a.KeyString() == c.peerKey {
+			return store.AddAddr(q, c.peerKey, a.Public().String(), "hello", now)
 		}
 		return nil
 	})
@@ -555,18 +532,15 @@ func (n *Node) afterHandshake(c *Conn) error {
 		return err
 	}
 	for _, raw := range c.peerGrants {
-		n.acceptPresentedGrant(c.peerKey, raw, "auth")
+		n.acceptPresentedGrant(c.peerKey, raw, "hello")
 	}
 	if err := n.admit(c.peerKey, c.outbound); err != nil {
-		c.sendErrNow(wire.ErrAuth, "", err.Error())
+		c.sendErrNow(wire.ErrRefused, "", err.Error())
 		n.sysEvent(c.peerKey, "refused", map[string]any{"reason": err.Error(), "name": h.Name, "via": c.via})
 		return err
 	}
 	if err := n.activate(c); err != nil {
 		return err
-	}
-	if c.outbound {
-		n.st.AddrResult(c.peerKey, c.via, nil, now)
 	}
 	n.sysEvent(c.peerKey, "connected", map[string]any{"name": h.Name, "about": h.About, "via": c.via, "outbound": c.outbound, "caps": h.Caps})
 	n.noteShares(c.peerKey, h.Shares)

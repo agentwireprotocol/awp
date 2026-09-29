@@ -661,7 +661,7 @@ type Record struct {
 
 // Append adds a record, unless one with the same (peer, dir, id) exists, in
 // which case it reports inserted == false. That is the receive-side dedup
-// that section 9.5 requires.
+// that section 12.5 requires.
 func Append(q Q, r *Record) (inserted bool, err error) {
 	meta := "{}"
 	if len(r.Meta) > 0 {

@@ -20,17 +20,10 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-
       - uses: oven-sh/setup-bun@v2
 
       - name: Build the web dashboard
         run: make web
-
-      - name: Install Python dependencies
-        run: python -m pip install cryptography
 
       - name: gofmt
         run: |
@@ -49,14 +42,27 @@ jobs:
       - name: Go tests (race detector)
         run: go test -race ./...
 
-      - name: Python peer tests
-        run: make test-python
-
-      - name: Go/Python interop
-        run: make interop
-
-      - name: Conformance suite against the Python peer
-        run: make conformance
-
       - name: Cross-compile the release artifacts
         run: scripts/dist.sh 0.0.0-ci
+
+  # The carriers that go through the internet. They depend on tailcat's
+  # public DERP relays and on Cloudflare's quick tunnels, so they report
+  # without blocking a merge.
+  carriers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install cloudflared
+        run: |
+          curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x /usr/local/bin/cloudflared
+
+      - name: tailcat and Cloudflare carriers
+        run: make carriers

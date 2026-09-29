@@ -21,7 +21,7 @@ import (
 	"github.com/agentwireprotocol/awp/internal/mcp"
 	"github.com/agentwireprotocol/awp/internal/version"
 	"github.com/agentwireprotocol/awp/store"
-	"github.com/agentwireprotocol/awp/transport"
+	"github.com/agentwireprotocol/awp/tunnel"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
@@ -32,19 +32,19 @@ func cmdVersion(ctx context.Context, args []string) error {
 
 func cmdDaemon(ctx context.Context, args []string) error {
 	f := newFlags("daemon", "", "Run the awp daemon in the foreground. Other commands start it on demand;\nrun it yourself under a service manager, or to watch its log.")
-	listen := f.StringArray("listen", nil, "address to listen on: tailcat, tcp:HOST:PORT or unix:/path (repeatable; default from config, else tailcat)")
+	listen := f.StringArray("listen", nil, "carrier to listen on: tailcat, udp:HOST:PORT, unix:/path, ws:HOST:PORT[=URL] or cloudflare\n(repeatable; default from config, else tailcat)")
 	noTailcat := f.Bool("no-tailcat", false, "do not listen on tailcat")
 	name := f.String("name", "", "name sent in hello (default awp@HOSTNAME)")
 	about := f.String("about", "", "free-text description sent in hello")
 	harnessFlag := f.String("harness", "", "agent harness this agent runs in: "+strings.Join(harness.IDs(), ", ")+" (default: detected; remembered)")
-	advertise := f.String("advertise", "", "address sent in hello for the peer to dial back (none to disable)")
+	advertise := f.String("advertise", "", "none: do not send our address in hello for the peer to dial back")
 	serve := f.StringSlice("serve", nil, "capabilities to fulfil automatically for granted peers: exec, fs:read, fs:write")
 	root := f.String("root", "", "directory that fs:read/fs:write are confined to and exec runs in")
 	accept := f.String("accept", "", "admission policy: any (default) or allowlist")
 	allow := f.StringArray("allow", nil, "key to admit under the allowlist policy (repeatable)")
 	trust := f.StringArray("trust", nil, "issuer key whose grants to honor (repeatable)")
 	trace := f.Bool("trace", false, "log every protocol line")
-	verbose := f.Bool("verbose", false, "include tailcat's own logs")
+	verbose := f.Bool("verbose", false, "include tailcat's and WireGuard's own logs")
 	presence := f.Bool("presence", false, "publish signed presence (threads, states, peers) so awp web on any connected host can see this agent")
 	if err := f.Parse(args); err != nil {
 		return err
@@ -92,7 +92,7 @@ func cmdDaemon(ctx context.Context, args []string) error {
 }
 
 func cmdUp(ctx context.Context, args []string) error {
-	f := newFlags("up", "", "Start the daemon in the background if it is not running, wait for the tailcat\naddress, and print the identity and the address to share.")
+	f := newFlags("up", "", "Start the daemon in the background if it is not running, wait for its carriers\nto come up, and print the identity and the address to share.")
 	name := f.String("name", "", "name to present to peers, e.g. claude-code@myhost (remembered)")
 	about := f.String("about", "", "what you are working on, sent in hello (remembered)")
 	harnessFlag := f.String("harness", "", "agent harness this agent runs in: "+strings.Join(harness.IDs(), ", ")+" (default: detected; remembered)")
@@ -139,8 +139,8 @@ func cmdUp(ctx context.Context, args []string) error {
 		fmt.Println("share the address with the other agent; they run: awp connect <address>")
 	} else {
 		fmt.Printf("  address  none yet")
-		if st.TailcatErr != "" {
-			fmt.Printf(" (tailcat: %s)", st.TailcatErr)
+		if e := st.PendingError(); e != "" {
+			fmt.Printf(" (%s)", e)
 		}
 		fmt.Println()
 	}
@@ -212,19 +212,17 @@ func cmdStatus(ctx context.Context, args []string) error {
 	}
 	fmt.Printf("%s  %s\n", st.Name, st.Key)
 	fmt.Printf("  pid %d, up %s, home %s\n", st.PID, time.Since(st.Started).Round(time.Second), st.Home)
-	if st.Tailcat != "" {
-		fmt.Printf("  address  %s\n", st.Tailcat)
-	} else if st.TailcatWant {
-		msg := "starting"
-		if st.TailcatErr != "" {
-			msg = st.TailcatErr
-		}
-		fmt.Printf("  tailcat  %s\n", msg)
+	if st.Address != "" {
+		fmt.Printf("  address  %s\n", st.Address)
 	}
-	for _, a := range st.Addresses {
-		if !strings.HasPrefix(a, "tailcat:") {
-			fmt.Printf("  listen   %s\n", a)
+	for _, e := range st.Endpoints {
+		fmt.Printf("  via      %s\n", shortEndpoint(e))
+	}
+	for spec, e := range st.Pending {
+		if e == "" {
+			e = "starting"
 		}
+		fmt.Printf("  %-8s %s\n", spec, e)
 	}
 	if len(st.Serve) > 0 {
 		fmt.Printf("  serves   %s (to peers holding a grant)\n", strings.Join(st.Serve, ", "))
@@ -239,7 +237,8 @@ func cmdStatus(ctx context.Context, args []string) error {
 }
 
 func cmdAddress(ctx context.Context, args []string) error {
-	f := newFlags("address", "", "Print the address to share (the tailcat address when available).")
+	f := newFlags("address", "", "Print the address to share: this agent's key, admission secret and every\nendpoint it listens on. --rotate replaces the admission secret, so every\naddress shared before stops admitting agents not met yet.")
+	rotate := f.Bool("rotate", false, "replace the pre-shared key first")
 	if err := f.Parse(args); err != nil {
 		return err
 	}
@@ -247,13 +246,18 @@ func cmdAddress(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if *rotate {
+		if err := c.Call(ctx, "rotate_psk", nil, nil); err != nil {
+			return err
+		}
+	}
 	st, err := waitAddress(ctx, c, 45*time.Second)
 	if err != nil {
 		return err
 	}
 	addr := st.ShareAddress()
 	if addr == "" {
-		return fmt.Errorf("no address yet (tailcat: %s)", st.TailcatErr)
+		return fmt.Errorf("no address yet (%s)", st.PendingError())
 	}
 	fmt.Println(addr)
 	return nil
@@ -279,7 +283,7 @@ func cmdListen(ctx context.Context, args []string) error {
 	if *text {
 		fmt.Printf("listening as %s (%s)\naddress %s\n", st.Name, st.Key, st.ShareAddress())
 	} else {
-		printLine(map[string]any{"event": "listening", "address": st.ShareAddress(), "addresses": st.Addresses, "key": st.Key, "name": st.Name})
+		printLine(map[string]any{"event": "listening", "address": st.ShareAddress(), "endpoints": st.Endpoints, "key": st.Key, "name": st.Name})
 	}
 	p := &printer{w: os.Stdout}
 	err = c.Stream(ctx, "subscribe", api.SubscribeParams{Inbox: true, Mark: *mark}, func(raw json.RawMessage) error {
@@ -299,7 +303,7 @@ func cmdListen(ctx context.Context, args []string) error {
 }
 
 func cmdConnect(ctx context.Context, args []string) error {
-	f := newFlags("connect", "<address>", "Connect to a peer. The address is what the other side's `awp up` or\n`awp listen` printed (tc..., tcp:HOST:PORT or unix:/path), or the name of a\npeer you have met before. The daemon keeps the connection and reconnects\nwhenever there is unfinished business.")
+	f := newFlags("connect", "<address>", "Connect to a peer. The address is what the other side's `awp up` or\n`awp listen` printed (awp1...), or the name of a\npeer you have met before. The daemon keeps the connection and reconnects\nwhenever there is unfinished business.")
 	timeout := f.Duration("timeout", 60*time.Second, "how long to wait for the connection")
 	if err := f.Parse(args); err != nil {
 		return err
@@ -438,7 +442,7 @@ func sendStatus(res api.SendResult, waited bool) string {
 func looksLikePeer(ctx context.Context, c interface {
 	Call(context.Context, string, any, any) error
 }, s string) bool {
-	if _, err := transport.Parse(s); err == nil {
+	if tunnel.IsAddress(s) {
 		return true
 	}
 	var peers []api.PeerView
@@ -783,7 +787,7 @@ func printPeers(peers []api.PeerView) {
 }
 
 func cmdGrant(ctx context.Context, args []string) error {
-	f := newFlags("grant", "<peer> <cap>...", "Grant capabilities to a peer (section 10 of the spec): exec, fs:read, fs:write,\nintroduce, admin. exec and fs:write are remote code execution; grant them only\nwhen your user has explicitly agreed, and keep the ttl short.")
+	f := newFlags("grant", "<peer> <cap>...", "Grant capabilities to a peer (section 13 of the spec): exec, fs:read, fs:write,\nintroduce, admin. exec and fs:write are remote code execution; grant them only\nwhen your user has explicitly agreed, and keep the ttl short.")
 	ttl := f.Duration("ttl", time.Hour, "how long the grant is valid")
 	if err := f.Parse(args); err != nil {
 		return err
@@ -1091,4 +1095,14 @@ func cmdPrivate(ctx context.Context, args []string) error {
 	}
 	fmt.Printf("thread %s is private: it is not shared, and hosts that had a copy are asked to forget it\n", th)
 	return nil
+}
+
+// shortEndpoint abbreviates long endpoint values (tailcat addresses) for
+// display.
+func shortEndpoint(e string) string {
+	kind, v, _ := strings.Cut(e, ":")
+	if len(v) > 40 {
+		v = v[:16] + "…" + v[len(v)-8:]
+	}
+	return kind + " " + v
 }

@@ -19,8 +19,8 @@ func cmdConform(ctx context.Context, args []string) error {
 			"to the address once per scenario, drives each exchange, checks every line against the\n"+
 			"JSON Schema, and reports. With --listen the peer connects to the runner instead, and the\n"+
 			"scenarios that fit one connection run in turn. Exit status 1 if any scenario fails.")
-	listen := f.String("listen", "", "listen here (tcp:HOST:PORT or unix:/path) and let the peer connect")
-	run := f.String("run", "", "with --listen: a shell command that starts the peer, {addr} replaced by the listening address")
+	listen := f.String("listen", "", "listen on this carrier (udp:127.0.0.1:0, unix:/path, tailcat, ...) and let the peer connect")
+	run := f.String("run", "", "with --listen: a shell command that starts the peer, {addr} replaced by the runner's address")
 	only := f.StringArray("scenario", nil, "run only this scenario (repeatable; see --list)")
 	timeout := f.Duration("timeout", 15*time.Second, "how long to wait for the peer at each step")
 	list := f.Bool("list", false, "list the scenarios and exit")

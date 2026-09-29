@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/agentwireprotocol/awp/store"
-	"github.com/agentwireprotocol/awp/transport"
+	"github.com/agentwireprotocol/awp/tunnel"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
@@ -60,7 +60,7 @@ func (n *Node) handleLine(c *Conn, line []byte) error {
 	case "":
 		return c.fatal(wire.ErrBadFrame, env.ID, "missing message type")
 	}
-	// Unknown types are ignored (section 5). Replying unsupported is
+	// Unknown types are ignored (section 8). Replying unsupported is
 	// optional; staying quiet keeps a newer peer's chatter harmless.
 	return nil
 }
@@ -386,11 +386,9 @@ func (n *Node) onIntroduce(c *Conn, line []byte) error {
 			grant = g
 		}
 	}
-	addr := in.Peer.Address
-	if a, err := transport.Parse(addr); err == nil {
+	addr := ""
+	if a, err := tunnel.ParseAddress(in.Peer.Address); err == nil && a.KeyString() == in.Peer.Key {
 		addr = a.String()
-	} else {
-		addr = ""
 	}
 	err := n.st.Tx(func(q store.Q) error {
 		id := in.ID

@@ -3,7 +3,7 @@
 //
 // One daemon per awp home (~/.awp by default) owns the identity key,
 // the tailcat listener and every connection, so switching harness mid-task
-// keeps the identity and the conversations (spec section 15, question 1).
+// keeps the identity and the conversations (spec section 18, question 1).
 package daemon
 
 import (
@@ -37,9 +37,8 @@ type Config struct {
 	OutboxTTL       string      `json:"outbox_ttl,omitempty"`
 	Policy          node.Policy `json:"policy,omitzero"`
 	Trace           bool        `json:"trace,omitempty"`
-	Plaintext       bool        `json:"allow_plaintext,omitempty"` // plain TCP to public addresses
-	Verbose         bool        `json:"verbose,omitempty"`         // include tailcat's own logs
-	Presence        bool        `json:"presence,omitempty"`        // publish signed presence (NOTES.md)
+	Verbose         bool        `json:"verbose,omitempty"`  // include tailcat's own logs
+	Presence        bool        `json:"presence,omitempty"` // publish signed presence (NOTES.md)
 }
 
 // DefaultHome is $AWP_HOME or ~/.awp.
@@ -134,9 +133,6 @@ func LoadConfig(home string) (Config, error) {
 	if v, ok := env("AWP_PRESENCE"); ok {
 		cfg.Presence = v != "0" && v != "false"
 	}
-	if v, ok := env("AWP_ALLOW_PLAINTEXT"); ok && v != "0" {
-		cfg.Plaintext = true
-	}
 	if len(cfg.Listen) == 0 {
 		cfg.Listen = []string{"tailcat"}
 	}
@@ -159,8 +155,7 @@ func (c Config) nodeConfig() (node.Config, error) {
 		Policy:          c.Policy,
 		Trace:           c.Trace,
 
-		AllowPlaintext: c.Plaintext,
-		Presence:       c.Presence,
+		Presence: c.Presence,
 	}
 	if c.PingInterval != "" {
 		d, err := time.ParseDuration(c.PingInterval)

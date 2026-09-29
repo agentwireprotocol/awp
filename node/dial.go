@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/agentwireprotocol/awp/store"
-	"github.com/agentwireprotocol/awp/transport"
+	"github.com/agentwireprotocol/awp/tunnel"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
@@ -19,14 +19,11 @@ type dialResult struct {
 	err error
 }
 
-// dial connects to addr and runs the handshake. On success the connection
-// keeps running in its own goroutine and the peer's key is returned.
-func (n *Node) dial(ctx context.Context, addr string) (string, error) {
-	a, err := transport.Parse(addr)
-	if err != nil {
-		return "", err
-	}
-	raw, err := n.tr.Dial(ctx, a)
+// dial opens a tunnel stream to the peer the addresses describe and runs
+// the handshake. On success the connection keeps running in its own
+// goroutine and the peer's key is returned.
+func (n *Node) dial(ctx context.Context, addrs ...tunnel.Address) (string, error) {
+	s, err := n.tun.Dial(ctx, addrs...)
 	if err != nil {
 		return "", err
 	}
@@ -34,13 +31,13 @@ func (n *Node) dial(ctx context.Context, addr string) (string, error) {
 	n.wg.Add(1)
 	go func() {
 		defer n.wg.Done()
-		n.serveConn(raw, true, a.String(), res)
+		n.serveConn(s, true, res)
 	}()
 	select {
 	case r := <-res:
 		return r.key, r.err
 	case <-ctx.Done():
-		raw.Close()
+		s.Close()
 		r := <-res
 		if r.err == nil {
 			return r.key, nil
@@ -49,29 +46,122 @@ func (n *Node) dial(ctx context.Context, addr string) (string, error) {
 	}
 }
 
-// Connect dials an address given out of band (section 4.1) and returns the
-// key of the peer that answered. If a peer known at this address is
-// already connected, that connection is reused.
+// Connect dials an address given out of band (section 6) and returns the
+// key of the peer. If that peer is already connected, the connection is
+// reused.
 func (n *Node) Connect(ctx context.Context, addr string) (string, error) {
-	a, err := transport.Parse(addr)
+	a, err := tunnel.ParseAddress(addr)
 	if err != nil {
 		return "", err
 	}
-	var existing string
-	n.st.DB().QueryRow(`SELECT peer FROM addrs WHERE addr = ? ORDER BY last_ok DESC LIMIT 1`, a.String()).Scan(&existing)
-	if existing != "" && n.Connected(existing) {
-		n.st.SetParked(existing, false)
-		return existing, nil
+	key := a.KeyString()
+	if key == n.key {
+		return "", errors.New("that is this peer's own address")
 	}
-	key, err := n.dial(ctx, a.String())
+	if n.settle(ctx, key) {
+		n.st.SetParked(key, false)
+		return key, nil
+	}
+	known := n.knownAddresses(key)
+	got, err := n.dial(ctx, append([]tunnel.Address{a}, known...)...)
 	if err != nil {
 		return "", err
 	}
-	n.st.SetParked(key, false)
-	return key, nil
+	if err := n.st.Tx(func(q store.Q) error { return store.AddAddr(q, key, a.String(), "connect", time.Now()) }); err != nil {
+		n.logf("remember address: %v", err)
+	}
+	n.st.SetParked(got, false)
+	return got, nil
 }
 
-// dialer is a peer's reconnect loop (section 4.3): exponential backoff
+// settle reports whether key has a live connection to reuse. A connection
+// that is saying bye is not one: settle waits for it to end, so that a
+// connect right after a bye dials afresh instead of returning it.
+func (n *Node) settle(ctx context.Context, key string) bool {
+	n.mu.Lock()
+	var c *Conn
+	if p := n.peers[key]; p != nil {
+		c = p.conn
+	}
+	n.mu.Unlock()
+	if c == nil {
+		return false
+	}
+	if !c.byeSent.Load() {
+		return true
+	}
+	// Wait for the node to let go of it, not just for its reader to stop.
+	for {
+		ch := n.Changed()
+		n.mu.Lock()
+		p := n.peers[key]
+		gone := p == nil || p.conn != c
+		live := p != nil && p.conn != nil && p.conn != c
+		n.mu.Unlock()
+		if gone {
+			return live
+		}
+		select {
+		case <-ch:
+		case <-time.After(100 * time.Millisecond):
+		case <-ctx.Done():
+			return false
+		}
+	}
+}
+
+// ConnectKey dials a known peer at everything known about reaching it.
+func (n *Node) ConnectKey(ctx context.Context, key string) error {
+	if n.settle(ctx, key) {
+		n.st.SetParked(key, false)
+		return nil
+	}
+	a, ok := n.addressOf(key)
+	if !ok {
+		return fmt.Errorf("no known address for %s", wire.ShortKey(key))
+	}
+	got, err := n.dial(ctx, a)
+	if err != nil {
+		return err
+	}
+	if got != key {
+		return fmt.Errorf("address now belongs to %s", wire.ShortKey(got))
+	}
+	n.st.SetParked(key, false)
+	return nil
+}
+
+// knownAddresses parses the stored addresses of key, those given out of
+// band (which carry the pre-shared key) first.
+func (n *Node) knownAddresses(key string) []tunnel.Address {
+	rows, _ := store.Addrs(n.st.DB(), key)
+	var first, rest []tunnel.Address
+	for _, r := range rows {
+		a, err := tunnel.ParseAddress(r.Addr)
+		if err != nil || a.KeyString() != key {
+			continue
+		}
+		if r.Source == "connect" {
+			first = append(first, a)
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	return append(first, rest...)
+}
+
+// addressOf is everything known about reaching key, merged: what the
+// reconnect loop dials and what an introduction hands on.
+func (n *Node) addressOf(key string) (tunnel.Address, bool) {
+	as := n.knownAddresses(key)
+	if len(as) == 0 {
+		return tunnel.Address{}, false
+	}
+	m, err := tunnel.Merge(as...)
+	return m, err == nil
+}
+
+// dialer is a peer's reconnect loop (section 10.3): exponential backoff
 // capped at MaxBackoff, no give-up, for as long as wantConnection holds.
 type dialer struct {
 	n      *Node
@@ -123,7 +213,7 @@ func (n *Node) ensureDialer(key string, immediate bool) {
 	if !n.wantConnection(key) {
 		return
 	}
-	if addrs, _ := store.Addrs(n.st.DB(), key); len(addrs) == 0 {
+	if _, ok := n.addressOf(key); !ok {
 		return
 	}
 
@@ -150,7 +240,6 @@ func (d *dialer) run(immediate bool) {
 	}()
 
 	backoff := time.Second
-	failures := 0
 	first := true
 	for {
 		if n.ctx.Err() != nil || n.Connected(d.key) || !n.wantConnection(d.key) {
@@ -171,31 +260,29 @@ func (d *dialer) run(immediate bool) {
 			continue
 		}
 		first = false
+		addr, ok := n.addressOf(d.key)
+		if !ok {
+			return
+		}
+		ctx, cancel := context.WithTimeout(n.ctx, 45*time.Second)
+		key, err := n.dial(ctx, addr)
+		cancel()
+		if err == nil && key != d.key {
+			err = fmt.Errorf("address now belongs to %s", wire.ShortKey(key))
+		}
+		if err == nil {
+			for _, a := range addrs {
+				n.st.AddrResult(d.key, a.Addr, nil, time.Now())
+			}
+			return
+		}
+		var peerErr errPeerSaid
+		if errors.As(err, &peerErr) && (peerErr.e.Code == wire.ErrRefused || peerErr.e.Code == wire.ErrAuth || peerErr.e.Code == wire.ErrVersion) {
+			n.logf("%s refused us: %v", wire.ShortKey(d.key), err)
+		}
+		d.setErr(err)
 		for _, a := range addrs {
-			if n.Connected(d.key) {
-				return
-			}
-			ctx, cancel := context.WithTimeout(n.ctx, 30*time.Second)
-			key, err := n.dial(ctx, a.Addr)
-			cancel()
-			if err == nil && key != d.key {
-				err = fmt.Errorf("address now belongs to %s", wire.ShortKey(key))
-			}
-			if err == nil {
-				return
-			}
-			var peerErr errPeerSaid
-			if errors.As(err, &peerErr) && (peerErr.e.Code == wire.ErrAuth || peerErr.e.Code == wire.ErrVersion) {
-				n.logf("%s refused us: %v", wire.ShortKey(d.key), err)
-			}
-			d.setErr(err)
 			n.st.AddrResult(d.key, a.Addr, err, time.Now())
-			failures++
-			if failures%3 == 0 {
-				if pa, err := transport.Parse(a.Addr); err == nil {
-					n.tr.Reset(pa) // start the next attempt from a fresh tailcat node
-				}
-			}
 		}
 		wait := backoff/2 + rand.N(backoff) // jitter in [b/2, 3b/2)
 		n.logf("reconnect to %s failed (%s); retrying in %v", wire.ShortKey(d.key), d.lastErr(), wait.Round(100*time.Millisecond))

@@ -1,6 +1,8 @@
 # awp
 
-awp is the reference implementation of the Agent Wire Protocol (AWP): peer-to-peer messaging between coding agents, over [tailcat](https://github.com/tailscale/tailcat). AWP is a wire protocol between two peers, not an API on a server. Nothing sits between them: no server, no provider, no account. The protocol is in [SPEC.md](SPEC.md). The spec is at draft 2, which makes WireGuard the connection itself and tailcat one of several pluggable carriers; this implementation still speaks draft 1 (protocol v0) until the engine follows.
+awp is the reference implementation of the Agent Wire Protocol (AWP): peer-to-peer messaging between coding agents, inside a WireGuard tunnel between the two agents' own keys. AWP is a wire protocol between two peers, not an API on a server. Nothing sits between them: no server, no provider, no account. The protocol is in [SPEC.md](SPEC.md) (draft 2, protocol v1).
+
+The tunnel rides on whatever can carry a packet: [tailcat](https://github.com/tailscale/tailcat) by default, which gets through any NAT, or plain UDP, a WebSocket through a Cloudflare quick tunnel or any HTTP proxy, or a local socket. The carriers see only WireGuard, so none of them has to be trusted.
 
 One agent runs `awp up` and gets an address. The other runs `awp connect <address>`. After that, both sides are equal. Either one can:
 
@@ -9,14 +11,14 @@ One agent runs `awp up` and gets an address. The other runs `awp connect <addres
 - report its state (`working`, `waiting`, `done`, `failed`)
 - grant capabilities to the other
 
-There are no accounts, DNS names or certificates. Everything is inside a WireGuard tunnel, and every peer proves possession of its Ed25519 key. If one side's sandbox sleeps, messages queue on disk and are delivered when it comes back.
+There are no accounts, DNS names or certificates. A peer's Ed25519 key is its WireGuard key, so whoever is on the other end of the tunnel is the key it claims to be. If one side's sandbox sleeps, messages queue on disk and are delivered when it comes back.
 
 ```
 laptop$ awp up
 awp is up as claude-code@laptop
-  address  tcpGFwWCC4NZzx45Vm3...        ← hand this to the other agent
+  address  awp1omJlcIGiYWtndGFpbGNh...        ← hand this to the other agent
 
-sprite$ awp connect tcpGFwWCC4NZzx45Vm3...
+sprite$ awp connect awp1omJlcIGiYWtndGFpbGNh...
 sprite$ awp send claude-code@laptop --subject "Run integration suite on kyle/refactor" \
           --data '{"repo":"fly-apps/foo","commit":"a1b2c3"}' "Please run make integration and send me failures."
 sent 01M3CCPH6QP57B7ZRNY8456ANB to claude-code@laptop in thr_cj66nrqv (acknowledged)
@@ -30,9 +32,9 @@ sprite$ awp wait --thread thr_cj66nrqv --state done,failed
 | A2A (Google, now Linux Foundation) | the remote agent is an HTTP server, behind whatever auth its Agent Card names | a URL, found through the Agent Card | the task waits on the server; poll it by id, or take a push notification |
 | AMP (agentmessaging.org) | federated providers, which relay between agents | `agent@tenant.provider` | the provider queues the message |
 | ACP (IBM, merged into A2A in 2025) | the agent is a REST server | a URL, from an agent manifest | an async run, awaited on the server |
-| AWP | nobody: two peers, one tailcat tunnel | a tailcat address, shared out of band | the sender's outbox on disk, delivered on reconnect |
+| AWP | nobody: two peers, one WireGuard tunnel between their keys | an `awp1` address: key, admission secret, endpoints; shared out of band | the sender's outbox on disk, delivered on reconnect |
 
-SPEC.md section 14 has the longer A2A comparison.
+SPEC.md section 17 has the longer A2A comparison.
 
 ## Install
 
@@ -54,7 +56,7 @@ Settings, all optional:
 | `AWP_INSTALL_DIR` | install somewhere other than `~/.local/bin` |
 | `AWP_BOOTSTRAP` | `ask` (default), `all` or `none` |
 
-Or build from source with Go 1.27 or later, the version tailcat requires:
+Or build from source with Go 1.27 or later:
 
 ```sh
 go install github.com/agentwireprotocol/awp/cmd/awp@latest
@@ -93,7 +95,7 @@ The easiest way is `awp bootstrap` (above). The plugin itself lives in `plugin/a
 plugin/awp/
   plugin.json                      Agent Plugins 1.0.0 manifest
   mcp.json                         MCP server: bin/awp mcp
-  skills/awp/SKILL.md           teaches the model the conventions (spec section 11)
+  skills/awp/SKILL.md           teaches the model the conventions (spec section 14)
   bin/awp                       launcher; picks libexec/awp-<os>-<arch>
   libexec/                         binaries, built by `make plugin`
   .claude-plugin/plugin.json       Claude Code manifest
@@ -130,6 +132,7 @@ In a test, a Claude Code session with only this plugin loaded was told in plain 
 | command | what it does |
 |---------|--------------|
 | `awp up` | start the daemon (if needed); print identity and the address to share |
+| `awp address [--rotate]` | print the address; `--rotate` replaces its admission secret, so copies shared before stop admitting agents not met yet |
 | `awp listen` | as the spec describes: print the address, then stream inbound messages as NDJSON until killed |
 | `awp connect <address>` | connect; the daemon keeps the connection and resumes after drops |
 | `awp send [<peer>] <text>` | send; `--thread`, `--subject`, `--re`, `--code FILE`, `--data JSON`, `--file PATH` (blob), `--wait-ack 30s` |
@@ -148,8 +151,24 @@ In a test, a Claude Code session with only this plugin loaded was told in plain 
 | `awp share [<host>]`, `awp private <thread>` | share this agent's conversations with a dashboard host; keep a thread out (see NOTES.md) |
 | `awp model [<id>]` | show or set the model this agent runs on (Claude Code, Cursor and opencode report it automatically) |
 | `awp mcp`, `awp hook <event>` | MCP server; harness hook helper |
+| `awp tunnel` | the WireGuard tunnel alone, as a helper process for SDKs in other languages |
+| `awp conform`, `awp schema` | the conformance runner; the JSON Schema |
 
 A peer can be named by the name it announced, a local alias (`awp alias`), a unique prefix of its key, or an address. Every command takes `--home` (default `$AWP_HOME` or `~/.awp`), and most take `--json`.
+
+### Carriers
+
+The daemon listens on tailcat unless told otherwise. `awp daemon --listen`, repeatable, or `AWP_LISTEN` (comma-separated) choose:
+
+| carrier | listen as | for |
+|---------|-----------|-----|
+| tailcat | `tailcat` | anything behind NAT: laptops, sandboxes. The default. |
+| UDP | `udp:HOST:PORT` (`udp::41641` advertises every local address) | machines that can reach each other: a LAN, Fly's 6PN, public addresses |
+| WebSocket | `ws:HOST:PORT`, or `ws:HOST:PORT=wss://public/url` behind a proxy | networks that block UDP; browsers; any HTTP tunnel |
+| Cloudflare | `cloudflare` | a `ws` endpoint through a Cloudflare quick tunnel; needs `cloudflared`, no account |
+| Unix socket | `unix:/path` | agents on one machine |
+
+Every carrier the daemon listens on goes into its one address, and a dialer tries them all. `awp status` lists them.
 
 ## Watching the network
 
@@ -165,15 +184,16 @@ Agents on other hosts appear only if they share presence (the `presence` extensi
 ## How it works
 
 ```
- CLI ─┐                                                     ┌─ tailcat (embedded library; tunnel port 1)
- MCP ─┼─ ~/.awp/awp.sock ─ daemon ─ node engine ─────┼─ tcp:host:port (loopback / private only)
-hook ─┘   (local control API)       │                       └─ unix:/path
+ CLI ─┐                                                             ┌─ tailcat
+ MCP ─┼─ ~/.awp/awp.sock ─ daemon ─ node engine ─ WireGuard tunnel ─┼─ udp
+hook ─┘   (local control API)       │           (userspace, TCP     ├─ ws / cloudflare
+                                    │            inside on port 1)  └─ unix
                                 ~/.awp/awp.db  (SQLite: outbox, seen ids, log, threads, blobs, grants)
 ```
 
 - **Daemon** (`internal/daemon`). One per home. Any command starts it on demand. It serves a newline-delimited JSON API on a `0600` Unix socket.
 - **Engine** (`node`). It implements the spec:
-  - the hello/auth handshake over the exact hello bytes
+  - the hello handshake, with `hello.key` checked against the tunnel's key
   - resume, the outbox and acks
   - dedup by id
   - blobs, grants and introductions
@@ -181,67 +201,66 @@ hook ─┘   (local control API)       │                       └─ unix:/p
   - ping/pong liveness (two missed pongs mean a dead connection)
   - bye, and the error codes with their close rules
   - reconnection with exponential backoff capped at 60s, no give-up, for as long as there are unacked messages or open threads
+- **Tunnel** (`tunnel`). WireGuard (Tailscale's wireguard-go) with a userspace TCP/IP stack (gVisor), keyed by the identity. Its `conn.Bind` spreads datagrams over the carriers and follows a peer to whichever path its last authenticated packet came from. Pre-shared keys (the listener's own, and one per pair of peers) are in `~/.awp/tunnel.json`, the tailcat carrier's key in `~/.awp/tailcat.json`, so an address survives restarts: a sandbox that wakes from sleep is back at the address its peers already have.
 - **Store** (`store`). All state lives in SQLite (WAL, `synchronous=FULL`), so a `kill -9` at any moment loses nothing.
   - Received messages are acked only after they are committed.
   - Ids are allocated inside the enqueue transaction, so id order, outbox order and send order always agree. Resume depends on that.
-- **Tailcat** (`transport`). The listener's WireGuard key, pre-shared key and DERP region are saved in `~/.awp/tailcat.json`. The address therefore survives restarts: a sandbox that wakes from sleep is back at the address its peers already have.
 - **Wire** (`wire/`). The message types, NDJSON framing (1 MiB lines), ULIDs, key encoding, canonical JSON and grants. It is importable by other Go peers, and it is the source the JSON Schema is generated from (below).
 
-### Extensions beyond draft 1
+### Extensions
 
-Unknown fields are ignored (section 5), so all of these are compatible with peers that do not know them. [NOTES.md](NOTES.md) explains why each is needed.
+Unknown fields and types are ignored (section 8), so these are compatible with peers that do not know them. Draft 1's extensions (`hello.addr`, `grant.aud`, `chunk.th`, `ref` on `blob_refused`) are part of draft 2; [NOTES.md](NOTES.md) explains why each was needed.
 
-- `hello.addr`: the sender's own reachable address. It lets a listener with queued results reconnect to a dialer that went away.
-- `grant.aud`: binds an introduction grant to the peer it is meant for. Without it, the grant would also give the recipient powers over the introducer.
-- `chunk.th`: chunks carry their thread, so resume can replay them. Chunks are sent before the msg that references them.
-- `err ref`: `blob_refused` names the refused blob.
 - `presence`: an opt-in, signed summary of what an agent is doing: its peers, and its threads' subjects and states. It is gossiped across the network, so `awp web` on any connected host can show every agent. It is sent only to peers that list `presence` in their hello `caps`.
 
 ## Schema and conformance
 
 The protocol has no OpenAPI description, since it is not HTTP. It has the equivalent for a line protocol:
 
-- **A JSON Schema** (draft 2020-12) for every message, at [`schema/v0/awp.schema.json`](schema/v0/awp.schema.json) and served at https://agentwireprotocol.com/schema/v0/awp.schema.json. It is generated from the `wire` package by `make schema` (`go generate ./wire`), together with the [schema reference page](schema/v0/schema.mdx) of the docs site, so the reference implementation's types are the source of truth and a test fails when the files are stale. Every JSON example in [SPEC.md](SPEC.md) validates against it, and so does one of every message the Go peer encodes. `awp schema` prints it.
-- **A conformance runner**, `awp conform`. It is a peer of its own with a key of its own: it connects to the peer under test once per scenario, drives each exchange, checks every line it receives against the schema, and reports.
+- **A JSON Schema** (draft 2020-12) for every message, at [`schema/v1/awp.schema.json`](schema/v1/awp.schema.json) and served at https://agentwireprotocol.com/schema/v1/awp.schema.json. It is generated from the `wire` package by `make schema` (`go generate ./wire`), together with the [schema reference page](schema/v1/schema.mdx) of the docs site, so the reference implementation's types are the source of truth and a test fails when the files are stale. Every JSON example in [SPEC.md](SPEC.md) validates against it, and so does one of every message the Go peer encodes. `awp schema` prints it.
+- **A conformance runner**, `awp conform`. It is a peer of its own with a key of its own: it reaches the peer under test through a tunnel like any peer, once per scenario, drives each exchange, checks every line it receives against the schema, and reports.
 
 ```sh
-awp conform tcp:127.0.0.1:7000            # the peer listens; every scenario, each on its own connection
-awp conform --listen tcp:127.0.0.1:0 \
+awp conform awp1...                       # the peer listens; every scenario, each on its own connection
+awp conform --listen udp:127.0.0.1:0 \
   --run 'my-peer connect {addr}'          # the peer connects to the runner; the scenarios that share a connection
 awp conform --list                        # the scenarios, with the spec section each one checks
-awp conform --scenario handshake --trace tcp:127.0.0.1:7000
+awp conform --scenario handshake --trace awp1...
 ```
 
-The scenarios cover the handshake (hello without waiting, auth signatures, resume), the closing errors (`version`, `auth`, `bad_frame`, `too_large`) and that the connection closes after them, ping/pong, acks for `msg` and `state` with the right `re` and `th`, dedup, unknown types and fields, non-closing errors, blobs in chunks, grants and bye. The report is text, or JSON with `--json`; the exit status is 1 when a scenario fails. The reference implementation runs the suite against itself in `go test`, and `make conformance` runs it against the Python peer both ways.
+The scenarios cover the handshake (hello without waiting, `hello.key` bound to the tunnel, resume), the closing errors (`version`, `auth` for a hello naming another key or the peer's own, `bad_frame`, `too_large`) and that the connection closes after them, ping/pong, acks for `msg` and `state` with the right `re` and `th`, dedup, unknown types and fields, non-closing errors, blobs in chunks, grants and bye. The report is text, or JSON with `--json`; the exit status is 1 when a scenario fails. The reference implementation runs the suite against itself in `go test`, and each SDK runs it against itself in its own CI.
 
-Writing a peer in another language: generate your types from the schema (or check hand-written ones against it, as the MCP SDKs do), keep the examples in SPEC.md as test vectors (the grant in section 10.2 has a real signature), and run `awp conform` against your peer while you go.
+Writing a peer in another language: generate your types from the schema (or check hand-written ones against it, as the MCP SDKs do), keep the examples in SPEC.md as test vectors (the key conversion in section 4.2 and the grant in section 13.2 are real), get the tunnel from `awp tunnel` (below), and run `awp conform` against your peer while you go.
 
 ## SDKs
 
 Your own program can be a peer. Each SDK has the whole protocol inside (resume with an outbox on disk, acks, dedup, blobs, grants, reconnection) and runs the conformance suite in its own tests:
 
-- [Go](https://github.com/agentwireprotocol/go-sdk): `github.com/agentwireprotocol/go-sdk/awp`, a `Peer` on this repository's engine (the `node`, `store`, `transport` and `conformance` packages).
-- [Python](https://github.com/agentwireprotocol/python-sdk): `pip install awp`, an asyncio `Peer` with no dependencies, grown out of `python/awp_peer.py`.
+- [Go](https://github.com/agentwireprotocol/go-sdk): `github.com/agentwireprotocol/go-sdk/awp`, a `Peer` on this repository's engine (the `node`, `store`, `tunnel` and `conformance` packages).
+- [Python](https://github.com/agentwireprotocol/python-sdk): `pip install awp`, an asyncio `Peer` with no dependencies.
 - [TypeScript](https://github.com/agentwireprotocol/typescript-sdk): `npm install @agentwireprotocol/sdk`, a `Peer` for Node and Bun with types generated from the schema.
+
+Python and TypeScript have no WireGuard of their own, so their peers run `awp tunnel`: the tunnel alone, one process per peer, holding the SDK's key. It prints the address, opens streams on request over a control socket, forwards the streams other peers open, and checks each `hello.key` against the tunnel before the SDK sees it (SPEC.md section 18.2).
 
 The docs have a section for each: https://docs.agentwireprotocol.com/go, /python, /typescript.
 
 ## Security
 
-- The address is a bearer secret for reaching `hello`, and nothing more. Share it like a password.
-- The default admission policy accepts any key and logs it, as section 7.3 recommends. `--accept allowlist` admits only allowed keys, trusted keys, keys you dialed, and keys that present a grant you honor.
+- The address is a bearer secret for reaching `hello`, and nothing more. Share it like a password; `awp address --rotate` revokes every copy for agents not met yet.
+- Every byte between two agents is inside WireGuard between their keys. Carriers, relays and tunnel providers see ciphertext only; there is no plaintext mode.
+- The default admission policy accepts any key and logs it, as section 10.2 recommends. `--accept allowlist` admits only allowed keys, trusted keys, keys you dialed, and keys that present a grant you honor.
 - `exec` and `fs:write` are remote code execution.
   - Requests that need a capability the sender lacks are refused with `err forbidden`.
   - The daemon *serves* requests itself only when started with `--serve` (see [PROFILE.md](PROFILE.md)). Otherwise the request goes to the agent, marked as allowed or denied.
   - File access is confined to `--root` through `os.Root`.
-- Plain TCP to public addresses is refused. Use tailcat, or a private network such as Fly's 6PN.
 - The skill and the hooks frame inbound messages as untrusted input from another agent, not instructions from the user.
 
 ## Development
 
 ```sh
-make test      # go vet, go test -race, the Python peer's own tests, Go↔Python interop, conformance
-make schema    # regenerate schema/v0/ from the wire package
+make test      # go vet, go test -race (the conformance suite against the Go node included)
+make carriers  # the tailcat and Cloudflare carriers, live (needs the internet and cloudflared)
+make schema    # regenerate schema/v1/ from the wire package
 make build     # ./bin/awp
 make plugin    # plugin/awp/libexec/awp-{linux,darwin}-{amd64,arm64}
 make dist      # release artifacts in dist/
@@ -262,16 +281,15 @@ The release workflow runs CI, checks that the version markers match the tag, bui
 The test suite covers:
 
 - the wire format (including canonical JSON checked against Python's `json.dumps`)
-- two-node integration: resume across repeated `kill -9`, byte-identical multi-chunk blobs, refused blobs, bad auth, version, bad frame, oversized lines, unknown fields, dead-peer detection, served `exec` and `fs:read` behind grants, introductions with attenuation and audience binding, bye and parking, reconnecting via `hello.addr`
-- the MCP server, including channel push
-- interop against the independent Python peer (`python/`), over TCP and Unix sockets, with `kill -9` on each side
-- the schema: the generated files are current, SPEC.md's examples and the Go peer's messages validate, and the conformance suite passes against the Go node in both modes and against the Python peer
+- the tunnel: the key conversion vectors from SPEC.md, addresses, streams over the udp, unix and ws carriers, wrong and rotated pre-shared keys, restarts, and (with `make carriers`) tailcat and Cloudflare live
+- two-node integration: resume across repeated `kill -9`, byte-identical multi-chunk blobs, refused blobs, a hello naming another key or our own, version, bad frame, oversized lines, unknown fields, dead-peer detection, served `exec` and `fs:read` behind grants, introductions with attenuation and audience binding, bye and parking, reconnecting via `hello.addr`
+- the MCP server, including channel push; the `awp tunnel` helper in both directions
+- the schema: the generated files are current, SPEC.md's examples and the Go peer's messages validate, and the conformance suite passes against the Go node in both modes; the SDKs run it against themselves
 
 Not done yet:
 
 - multi-party rooms
-- key rotation
-- a WebSocket binding (for wake-on-connect through a sandbox's HTTP URL)
+- identity key rotation
 - Windows
 
 ## License

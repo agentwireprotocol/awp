@@ -16,7 +16,7 @@ import (
 // Module is the Go module the wire package lives in; ID is the schema's $id.
 const (
 	Module = "github.com/agentwireprotocol/awp"
-	ID     = "https://agentwireprotocol.com/schema/v0/awp.schema.json"
+	ID     = "https://agentwireprotocol.com/schema/v1/awp.schema.json"
 )
 
 // required adds, per message type, the envelope fields the spec requires
@@ -34,7 +34,7 @@ var required = map[string][]string{
 // root, so that the wire package's comments can be read.
 func generate() (*Output, error) {
 	r := &jsonschema.Reflector{
-		// Unknown fields must be ignored (section 5), so no object is closed.
+		// Unknown fields must be ignored (section 8), so no object is closed.
 		AllowAdditionalProperties: true,
 		ExpandedStruct:            true,
 		Anonymous:                 true,
@@ -82,7 +82,7 @@ func generate() (*Output, error) {
 		variants = append(variants, ref(m.Type.Name()))
 	}
 	defs["Message"] = &jsonschema.Schema{
-		Description: "One line of a connection: a message of SPEC.md sections 7 to 10, or one of the extensions marked x-extension. " +
+		Description: "One line of a connection: a message of SPEC.md sections 10 to 13, or one of the extensions marked x-extension. " +
 			"A receiver ignores lines of a type it does not know, after checking the envelope.",
 		OneOf: variants,
 	}
@@ -121,7 +121,7 @@ func generate() (*Output, error) {
 	presence.Required = append(presence.Required, "sig") // omitempty in Go only for signing
 	defs["Presence"] = presence
 
-	if err := point(defs, "Auth", "grants", "Grant", true); err != nil {
+	if err := point(defs, "Hello", "grants", "Grant", true); err != nil {
 		return nil, err
 	}
 	if err := point(defs, "GrantMsg", "grant", "Grant", false); err != nil {
@@ -159,7 +159,7 @@ func generate() (*Output, error) {
 	root := &jsonschema.Schema{
 		Version:     jsonschema.Version,
 		ID:          ID,
-		Title:       "Agent Wire Protocol v0",
+		Title:       "Agent Wire Protocol v1",
 		Description: "The messages of the Agent Wire Protocol, one JSON object per line (SPEC.md). Every message is an envelope (t, id, ts, and th or re where they apply) with the fields of its type beside it.",
 		Comments:    "Generated from the wire package of " + Module + " by go generate ./wire. Do not edit by hand.",
 		Ref:         "#/$defs/Message",

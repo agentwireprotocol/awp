@@ -1,5 +1,5 @@
 // Command awp is the reference implementation of the Agent Wire Protocol
-// (AWP): a daemon that holds the identity, the tailcat listener and every
+// (AWP): a daemon that holds the identity, the WireGuard tunnel and every
 // connection, plus a small CLI, harness hooks and an MCP server on top.
 package main
 
@@ -65,6 +65,7 @@ func init() {
 		{"model", "[<model>]", "show or set the model this agent runs on (shared with the network)", cmdModel},
 		{"share", "[<host>...]", "show or set the hosts this agent shares its conversations with", cmdShare},
 		{"private", "[<peer>] <thread>", "keep a thread out of conversation sharing", cmdPrivate},
+		{"tunnel", "", "the WireGuard tunnel as a helper process, for SDKs in other languages", cmdTunnel},
 		{"conform", "[<address>]", "check a peer against the protocol: run the conformance scenarios and report", cmdConform},
 		{"schema", "", "print the protocol's JSON Schema", cmdSchema},
 		{"version", "", "print the version", cmdVersion},
@@ -112,7 +113,7 @@ func findCommand(name string) *command {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, "awp: peer-to-peer messaging between agents, over the Agent Wire Protocol and tailcat.")
+	fmt.Fprintln(w, "awp: peer-to-peer messaging between agents, over the Agent Wire Protocol: WireGuard\nbetween the agents' keys, carried by tailcat, UDP, WebSockets or a local socket.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "usage: awp <command> [flags] [args]")
 	fmt.Fprintln(w)
@@ -300,8 +301,8 @@ func printLine(v any) error {
 	return enc.Encode(v)
 }
 
-// waitAddress polls status until tailcat is up (if enabled), for commands
-// that need an address to hand out.
+// waitAddress polls status until the carriers are up, for commands that
+// need an address to hand out.
 func waitAddress(ctx context.Context, c *control.Client, timeout time.Duration) (*api.Status, error) {
 	deadline := time.Now().Add(timeout)
 	for {
@@ -309,7 +310,7 @@ func waitAddress(ctx context.Context, c *control.Client, timeout time.Duration) 
 		if err := c.Call(ctx, "status", nil, &st); err != nil {
 			return nil, err
 		}
-		if st.Tailcat != "" || !st.TailcatWant || time.Now().After(deadline) {
+		if st.Settled() || time.Now().After(deadline) {
 			return &st, nil
 		}
 		select {

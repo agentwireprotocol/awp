@@ -3,8 +3,12 @@
 // (or listens for it), drives each scenario over the wire, checks every
 // line it receives against the JSON Schema, and reports what the peer did.
 //
+// The runner reaches the peer the way any peer does, through a WireGuard
+// tunnel from a key of its own, so the tunnel's binding of hello.key is
+// checked too.
+//
 // It is what `awp conform` runs. The reference implementation passes it in
-// its own tests; scripts/conformance.sh runs it against the Python peer.
+// its own tests, and so do the SDKs.
 package conformance
 
 import (
@@ -23,20 +27,22 @@ import (
 	"time"
 
 	"github.com/agentwireprotocol/awp/schema"
-	"github.com/agentwireprotocol/awp/transport"
+	"github.com/agentwireprotocol/awp/tunnel"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
 // Options say which peer to check and how.
 type Options struct {
-	// Addr is the peer's address. The runner dials it once per scenario.
+	// Addr is the peer's address (awp1...). The runner dials it once per
+	// scenario.
 	Addr string
-	// Listen is an address (tcp:host:port or unix:/path) to listen on
-	// instead: the peer dials the runner, and the scenarios that fit one
-	// connection run in turn on it. Solo scenarios are skipped.
+	// Listen is a carrier to listen on instead (tunnel.Config.Listen:
+	// "udp:127.0.0.1:0", "unix:/path", "tailcat", ...): the peer dials the
+	// runner, and the scenarios that fit one connection run in turn on it.
+	// Solo scenarios are skipped.
 	Listen string
 	// Run is a shell command to start once the runner listens, with
-	// {addr} replaced by the listening address; it is killed at the end.
+	// {addr} replaced by the runner's address; it is killed at the end.
 	Run string
 	// Only names the scenarios to run; nil runs all of them.
 	Only []string
@@ -139,6 +145,15 @@ func Run(ctx context.Context, o Options) (*Report, error) {
 		return nil, err
 	}
 	r := &runner{o: o, v: v, priv: priv, key: wire.FormatKey(pub), ids: wire.NewIDGen()}
+	var listen []string
+	if o.Listen != "" {
+		listen = []string{o.Listen}
+	}
+	r.tun, err = tunnel.New(tunnel.Config{Identity: priv, Listen: listen})
+	if err != nil {
+		return nil, err
+	}
+	defer r.tun.Close()
 	started := time.Now()
 	rep := &Report{Addr: o.Addr, Mode: "connect"}
 	if o.Listen != "" {
@@ -167,6 +182,7 @@ func Run(ctx context.Context, o Options) (*Report, error) {
 
 type runner struct {
 	o    Options
+	tun  *tunnel.Tunnel
 	v    *schema.Validator
 	priv ed25519.PrivateKey
 	key  string
@@ -176,16 +192,14 @@ type runner struct {
 
 // connect runs every scenario on a connection of its own.
 func (r *runner) connect(ctx context.Context, scenarios []Scenario, rep *Report) error {
-	addr, err := transport.Parse(r.o.Addr)
+	addr, err := tunnel.ParseAddress(r.o.Addr)
 	if err != nil {
 		return err
 	}
-	t := &transport.Transport{AllowPublicTCP: true}
-	defer t.Close()
 	for _, sc := range scenarios {
 		r.o.Logf("%s: connecting", sc.Name)
-		dctx, cancel := context.WithTimeout(ctx, r.o.Timeout)
-		conn, err := t.Dial(dctx, addr)
+		dctx, cancel := context.WithTimeout(ctx, 3*r.o.Timeout)
+		conn, err := r.tun.Dial(dctx, addr)
 		cancel()
 		if err != nil {
 			if len(rep.Results) == 0 {
@@ -204,17 +218,22 @@ func (r *runner) connect(ctx context.Context, scenarios []Scenario, rep *Report)
 // listen accepts one connection from the peer and runs the scenarios that
 // share a connection on it, in order.
 func (r *runner) listen(ctx context.Context, scenarios []Scenario, rep *Report) error {
-	addr, err := transport.Parse(r.o.Listen)
-	if err != nil {
+	if err := r.tun.Start(); err != nil {
 		return err
 	}
-	ln, err := transport.Listen(addr)
-	if err != nil {
-		return err
+	deadline := time.Now().Add(90 * time.Second)
+	for len(r.tun.Address().Endpoints) == 0 {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("listen %s: %v", r.o.Listen, r.tun.Pending())
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
-	defer ln.Close()
-	rep.Addr = addr.Kind + ":" + ln.Addr().String()
-	r.o.Logf("listening on %s", rep.Addr)
+	rep.Addr = r.tun.Address().String()
+	r.o.Logf("listening at %s", rep.Addr)
 	if r.o.Run != "" {
 		cmd := exec.CommandContext(ctx, "sh", "-c", strings.ReplaceAll(r.o.Run, "{addr}", rep.Addr))
 		cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
@@ -230,15 +249,15 @@ func (r *runner) listen(ctx context.Context, scenarios []Scenario, rep *Report) 
 		}()
 	}
 	type accepted struct {
-		conn net.Conn
+		conn *tunnel.Stream
 		err  error
 	}
 	ch := make(chan accepted, 1)
 	go func() {
-		c, err := ln.Accept()
+		c, err := r.tun.Accept()
 		ch <- accepted{c, err}
 	}()
-	var conn net.Conn
+	var conn *tunnel.Stream
 	select {
 	case a := <-ch:
 		if a.err != nil {
@@ -268,7 +287,7 @@ func (r *runner) listen(ctx context.Context, scenarios []Scenario, rep *Report) 
 	return nil
 }
 
-func (r *runner) session(conn net.Conn) *session {
+func (r *runner) session(conn *tunnel.Stream) *session {
 	return &session{r: r, conn: conn, rd: wire.NewReader(conn), wr: wire.NewWriter(conn), timeout: r.o.Timeout, trace: r.o.Trace}
 }
 
@@ -311,7 +330,7 @@ func (r *runner) runOne(s *session, sc Scenario) Result {
 // session is one connection to the peer, as the scenarios see it.
 type session struct {
 	r       *runner
-	conn    net.Conn
+	conn    *tunnel.Stream
 	rd      *wire.Reader
 	wr      *wire.Writer
 	timeout time.Duration
@@ -471,11 +490,11 @@ func (s *session) expectClosed(what string) error {
 var helloCaps = []string{"chat", "blob", "grant", "introduce"}
 
 func (s *session) hello(v int) wire.Hello {
-	return wire.Hello{Envelope: s.env(wire.THello), V: v, Key: s.r.key, Name: s.r.o.Name, Nonce: wire.Nonce(32),
+	return wire.Hello{Envelope: s.env(wire.THello), V: v, Key: s.r.key, Name: s.r.o.Name,
 		Caps: helloCaps, About: "conformance runner"}
 }
 
-// handshake does section 7. With waitFirst the runner holds its own hello
+// handshake does section 10. With waitFirst the runner holds its own hello
 // until the peer's arrives and checks that the peer did not wait.
 func (s *session) handshake(waitFirst bool) error {
 	if !waitFirst {
@@ -516,30 +535,19 @@ func (s *session) handshake(waitFirst bool) error {
 	if !s.check(err == nil, "hello.key is an ed25519 key (%v)", err) {
 		return errors.New("bad hello key")
 	}
-	s.check(h.Nonce != "", "hello carries a nonce")
+	s.check(s.conn.Is(pub), "hello.key is the key on the other end of the tunnel")
+	for i, g := range h.Grants {
+		if _, err := wire.ParseGrant(g, time.Time{}); err != nil {
+			s.check(false, "hello.grants[%d] verifies (%v)", i, err)
+		}
+	}
+	if h.Addr != "" {
+		a, err := tunnel.ParseAddress(h.Addr)
+		s.check(err == nil && a.KeyString() == h.Key, "hello.addr is an address of hello.key (%v)", err)
+		s.check(err != nil || a.PSK == nil, "hello.addr carries no pre-shared key")
+	}
 	if s.r.peer == nil {
 		s.r.peer = &Peer{Key: h.Key, Name: h.Name, About: h.About, V: h.V, Caps: h.Caps}
-	}
-
-	if err := s.send(wire.Auth{Envelope: s.env(wire.TAuth), Sig: wire.SignAuth(s.r.priv, s.myHello, s.peerHello)}); err != nil {
-		return err
-	}
-	_, line, err = s.expect(wire.TAuth)
-	if err != nil {
-		return fmt.Errorf("waiting for auth: %w", err)
-	}
-	var a wire.Auth
-	if err := wire.Decode(line, &a); err != nil {
-		return fmt.Errorf("malformed auth: %v", err)
-	}
-	err = wire.VerifyAuth(pub, a.Sig, s.peerHello, s.myHello)
-	if !s.check(err == nil, "auth.sig verifies with hello.key over both hello lines (%v)", err) {
-		return errors.New("auth signature does not verify")
-	}
-	for i, g := range a.Grants {
-		if _, err := wire.ParseGrant(g, time.Time{}); err != nil {
-			s.check(false, "auth.grants[%d] verifies (%v)", i, err)
-		}
 	}
 
 	env, line, err = s.expect(wire.TResume)
@@ -550,7 +558,7 @@ func (s *session) handshake(waitFirst bool) error {
 	if err := wire.Decode(line, &res); err != nil {
 		return fmt.Errorf("malformed resume: %v", err)
 	}
-	s.check(true, "peer sent resume after auth (%d threads seen)", len(res.Seen))
+	s.check(true, "peer sent resume after hello (%d threads seen)", len(res.Seen))
 	if err := s.send(wire.Resume{Envelope: s.env(wire.TResume), Seen: map[string]string{}}); err != nil {
 		return err
 	}

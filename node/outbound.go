@@ -179,7 +179,7 @@ func deriveSubject(parts []wire.Part, files []string) string {
 	return ""
 }
 
-// SetState sends our view of a thread's state (section 8.1).
+// SetState sends our view of a thread's state (section 11.1).
 func (n *Node) SetState(peer, th, state, note string) (*SendResult, error) {
 	if state == "" {
 		return nil, errors.New("state is required")
@@ -210,7 +210,7 @@ func (n *Node) SetState(peer, th, state, note string) (*SendResult, error) {
 	return &SendResult{ID: id, Th: th, Peer: peer, Connected: n.Connected(peer)}, nil
 }
 
-// Grant mints a grant for sub (section 10.3), records it, and sends it if
+// Grant mints a grant for sub (section 13.3), records it, and sends it if
 // the peer is connected; otherwise it goes out after the next resume.
 func (n *Node) Grant(sub string, caps []string, ttl time.Duration) (*store.GrantRow, error) {
 	if _, err := wire.ParseKey(sub); err != nil {
@@ -265,7 +265,8 @@ func (n *Node) Introduce(to, intro string, caps []string, ttl time.Duration, th 
 	if err != nil {
 		return nil, err
 	}
-	if ip == nil || len(ip.Addrs) == 0 {
+	addr, ok := n.addressOf(intro)
+	if ip == nil || !ok {
 		return nil, fmt.Errorf("no known address for %s", wire.ShortKey(intro))
 	}
 	if ttl <= 0 {
@@ -278,7 +279,7 @@ func (n *Node) Introduce(to, intro string, caps []string, ttl time.Duration, th 
 	}
 	msg := wire.Introduce{
 		Envelope: wire.Envelope{T: wire.TIntroduce, TS: wire.FormatTime(now), Th: th},
-		Peer:     wire.IntroPeer{Key: intro, Name: ip.Name, Address: ip.Addrs[0].Addr},
+		Peer:     wire.IntroPeer{Key: intro, Name: ip.Name, Address: addr.String()},
 		Grant:    g.Raw,
 	}
 	if th == "" && !n.Connected(to) {
@@ -308,7 +309,7 @@ func (n *Node) Introduce(to, intro string, caps []string, ttl time.Duration, th 
 	return &SendResult{ID: msg.ID, Th: th, Peer: to, Connected: n.Connected(to)}, nil
 }
 
-// Bye closes the connection to a peer gracefully (section 9.6) and parks
+// Bye closes the connection to a peer gracefully (section 12.6) and parks
 // it: no reconnection until something new is queued for it.
 func (n *Node) Bye(peer, reason string) error {
 	n.st.SetParked(peer, true)

@@ -1,6 +1,7 @@
 package conformance
 
 import (
+	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -13,10 +14,10 @@ import (
 // Scenarios lists every scenario, in the order they run.
 func Scenarios() []Scenario {
 	return []Scenario{
-		{Name: "handshake", Section: "7", Handshake: true,
-			Doc: "hello without waiting, then auth and resume in order; the auth signature verifies",
+		{Name: "handshake", Section: "10", Handshake: true,
+			Doc: "hello without waiting, naming the tunnel's key, then resume",
 			run: func(s *session) error { return s.handshake(true) }},
-		{Name: "version", Section: "7.1", Solo: true,
+		{Name: "version", Section: "10.1", Solo: true,
 			Doc: "a hello with an unknown v gets err version and the connection closes",
 			run: func(s *session) error {
 				if err := s.send(s.hello(99)); err != nil {
@@ -24,25 +25,39 @@ func Scenarios() []Scenario {
 				}
 				return expectErr(s, wire.ErrVersion, "after a hello with v 99")
 			}},
-		{Name: "auth-bad-sig", Section: "7.2", Solo: true,
-			Doc: "an auth whose signature does not verify gets err auth and the connection closes",
+		{Name: "hello-key", Section: "10.1", Solo: true,
+			Doc: "a hello naming a key other than the tunnel's gets err auth and the connection closes",
 			run: func(s *session) error {
-				my, err := wire.Encode(s.hello(wire.Version))
+				other, _, err := ed25519.GenerateKey(nil)
 				if err != nil {
 					return err
 				}
-				if err := s.sendRaw(my); err != nil {
+				h := s.hello(wire.Version)
+				h.Key = wire.FormatKey(other)
+				if err := s.send(h); err != nil {
 					return err
 				}
-				if _, _, err := s.expect(wire.THello); err != nil {
+				return expectErr(s, wire.ErrAuth, "after a hello whose key is not the tunnel's")
+			}},
+		{Name: "hello-own-key", Section: "10.1", Solo: true,
+			Doc: "a hello naming the receiver's own key gets err auth and the connection closes",
+			run: func(s *session) error {
+				_, line, err := s.expect(wire.THello)
+				if err != nil {
 					return fmt.Errorf("waiting for hello: %w", err)
 				}
-				if err := s.send(wire.Auth{Envelope: s.env(wire.TAuth), Sig: wire.SignAuth(s.r.priv, []byte("wrong"), []byte("transcript"))}); err != nil {
+				var theirs wire.Hello
+				if err := wire.Decode(line, &theirs); err != nil {
 					return err
 				}
-				return expectErr(s, wire.ErrAuth, "after an auth with a bad signature")
+				h := s.hello(wire.Version)
+				h.Key = theirs.Key
+				if err := s.send(h); err != nil {
+					return err
+				}
+				return expectErr(s, wire.ErrAuth, "after a hello carrying the peer's own key")
 			}},
-		{Name: "bad-frame", Section: "5", Solo: true,
+		{Name: "bad-frame", Section: "8", Solo: true,
 			Doc: "a line that is not a JSON object gets err bad_frame and the connection closes",
 			run: func(s *session) error {
 				if err := s.handshake(false); err != nil {
@@ -53,7 +68,7 @@ func Scenarios() []Scenario {
 				}
 				return expectErr(s, wire.ErrBadFrame, "after a line that is not JSON")
 			}},
-		{Name: "too-large", Section: "5", Solo: true,
+		{Name: "too-large", Section: "8", Solo: true,
 			Doc: "a line over 1 MiB gets err too_large and the connection closes",
 			run: func(s *session) error {
 				if err := s.handshake(false); err != nil {
@@ -68,7 +83,7 @@ func Scenarios() []Scenario {
 				}
 				return expectErr(s, wire.ErrTooLarge, "after a line over 1 MiB")
 			}},
-		{Name: "ping", Section: "9.4",
+		{Name: "ping", Section: "12.4",
 			Doc: "a ping is answered by a pong whose re is the ping's id",
 			run: func(s *session) error {
 				ping := wire.Ping{Envelope: s.env(wire.TPing)}
@@ -82,7 +97,7 @@ func Scenarios() []Scenario {
 				s.check(env.Re == ping.ID, "pong.re is the ping's id (got %q)", env.Re)
 				return nil
 			}},
-		{Name: "msg-ack", Section: "9.1, 9.2",
+		{Name: "msg-ack", Section: "12.1, 12.2",
 			Doc: "a msg with text, code and data parts is acked, with the msg's id and thread",
 			run: func(s *session) error {
 				m := wire.Msg{Envelope: s.env(wire.TMsg), Subject: "conformance", Parts: []wire.Part{
@@ -93,7 +108,7 @@ func Scenarios() []Scenario {
 				m.Th = "conform-" + m.ID
 				return expectAck(s, m.Envelope, m)
 			}},
-		{Name: "state-ack", Section: "8.1, 9.2",
+		{Name: "state-ack", Section: "11.1, 12.2",
 			Doc: "a state is acked like a msg",
 			run: func(s *session) error {
 				m := wire.Msg{Envelope: s.env(wire.TMsg), Subject: "conformance state", Parts: text("state follows")}
@@ -105,7 +120,7 @@ func Scenarios() []Scenario {
 				st.Th = m.Th
 				return expectAck(s, st.Envelope, st)
 			}},
-		{Name: "dedup", Section: "9.5",
+		{Name: "dedup", Section: "12.5",
 			Doc: "a msg delivered twice with the same id is acked both times",
 			run: func(s *session) error {
 				m := wire.Msg{Envelope: s.env(wire.TMsg), Subject: "conformance dedup", Parts: text("once")}
@@ -124,7 +139,7 @@ func Scenarios() []Scenario {
 				s.check(env.Re == m.ID, "the replayed msg is acked again (ack.re %q)", env.Re)
 				return nil
 			}},
-		{Name: "unknown-type", Section: "5",
+		{Name: "unknown-type", Section: "8",
 			Doc: "a message of an unknown type is ignored, or answered with a non-closing err unsupported",
 			run: func(s *session) error {
 				line := []byte(`{"t":"conformance-future","id":"` + s.r.ids.New() + `","ts":"` + wire.Now() + `","payload":[1,2,3]}`)
@@ -154,7 +169,7 @@ func Scenarios() []Scenario {
 				s.check(env.Re == ping.ID, "connection survives an unknown message type: pong answers the ping")
 				return nil
 			}},
-		{Name: "unknown-field", Section: "5",
+		{Name: "unknown-field", Section: "8",
 			Doc: "unknown fields in a msg and its parts are ignored; the msg is acked",
 			run: func(s *session) error {
 				id, th := s.r.ids.New(), "conform-fields"
@@ -165,7 +180,7 @@ func Scenarios() []Scenario {
 				}
 				return expectAck(s, wire.Envelope{T: wire.TMsg, ID: id, Th: th})
 			}},
-		{Name: "err-nonclosing", Section: "9.7",
+		{Name: "err-nonclosing", Section: "12.7",
 			Doc: "an err with a non-closing code (unsupported) leaves the connection open",
 			run: func(s *session) error {
 				if err := s.send(wire.Err{Envelope: s.env(wire.TErr), Code: wire.ErrUnsupported, Detail: "conformance: a non-closing err"}); err != nil {
@@ -173,7 +188,7 @@ func Scenarios() []Scenario {
 				}
 				return s.alive("err unsupported")
 			}},
-		{Name: "chunk", Section: "9.3", Needs: "blob",
+		{Name: "chunk", Section: "12.3", Needs: "blob",
 			Doc: "a msg with a blob part, followed by the blob in two chunks, is acked and refused only with blob_refused",
 			run: func(s *session) error {
 				data := []byte("hello, conformance runner\n")
@@ -205,7 +220,7 @@ func Scenarios() []Scenario {
 				}
 				return s.alive("the chunks")
 			}},
-		{Name: "grant", Section: "10.3", Needs: "grant",
+		{Name: "grant", Section: "13.3", Needs: "grant",
 			Doc: "a grant message carrying a grant to the peer is accepted without an err",
 			run: func(s *session) error {
 				g, err := wire.MintGrant(s.r.priv, s.r.peer.Key, []string{"fs:read"}, time.Now().Add(time.Hour), "")
@@ -221,7 +236,7 @@ func Scenarios() []Scenario {
 				}
 				return s.alive("the grant")
 			}},
-		{Name: "bye", Section: "9.6",
+		{Name: "bye", Section: "12.6",
 			Doc: "a bye is answered with a bye and the connection closes",
 			run: func(s *session) error {
 				if err := s.send(wire.Bye{Envelope: s.env(wire.TBye), Reason: "conformance done"}); err != nil {

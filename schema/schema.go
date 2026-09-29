@@ -1,8 +1,8 @@
 // Package schema holds the published JSON Schema of the Agent Wire Protocol
-// (v0/awp.schema.json) and validates lines against it.
+// (v1/awp.schema.json) and validates lines against it.
 //
 // The schema is generated from the wire package by go generate ./wire; it
-// is the same document that https://agentwireprotocol.com/schema/v0/awp.schema.json
+// is the same document that https://agentwireprotocol.com/schema/v1/awp.schema.json
 // serves. A test fails when the file is older than the package.
 package schema
 
@@ -22,11 +22,11 @@ import (
 )
 
 // ID is the schema's $id.
-const ID = "https://agentwireprotocol.com/schema/v0/awp.schema.json"
+const ID = "https://agentwireprotocol.com/schema/v1/awp.schema.json"
 
 // V0 is the schema document.
 //
-//go:embed v0/awp.schema.json
+//go:embed v1/awp.schema.json
 var V0 []byte
 
 // Validator checks lines and objects against the schema. It is safe for
@@ -99,7 +99,7 @@ func (v *Validator) Def(name string) (*jsonschema.Schema, error) {
 
 // ErrUnknownType is wrapped by Line for a line whose type the schema does
 // not know. Such a line is still checked against the envelope, since
-// receivers must ignore unknown types (section 5) after reading it.
+// receivers must ignore unknown types (section 8) after reading it.
 var ErrUnknownType = errors.New("unknown message type")
 
 // Line validates one line as it travels: a JSON object whose type selects

@@ -87,33 +87,6 @@ func TestKeys(t *testing.T) {
 	}
 }
 
-func TestAuthSignature(t *testing.T) {
-	pubA, privA, _ := ed25519.GenerateKey(nil)
-	helloA := []byte(`{"t":"hello","id":"a1","ts":"x","v":0,"key":"A","nonce":"nA"}`)
-	helloB := []byte(`{"t":"hello","id":"b1","ts":"x","v":0,"key":"B","nonce":"nB"}`)
-	sig := SignAuth(privA, helloA, helloB)
-	// B verifies with A's key, peer (A) hello first.
-	if err := VerifyAuth(pubA, sig, helloA, helloB); err != nil {
-		t.Fatal(err)
-	}
-	// Swapped order, a different hello, or a different key must fail.
-	if VerifyAuth(pubA, sig, helloB, helloA) == nil {
-		t.Fatal("verified with swapped hellos")
-	}
-	if VerifyAuth(pubA, sig, helloA, append(helloB, ' ')) == nil {
-		t.Fatal("verified with modified hello")
-	}
-	pubC, _, _ := ed25519.GenerateKey(nil)
-	if VerifyAuth(pubC, sig, helloA, helloB) == nil {
-		t.Fatal("verified with wrong key")
-	}
-	payload := AuthPayload(helloA, helloB)
-	want := "awp-auth-v0\x00" + string(helloA) + "\x00" + string(helloB)
-	if string(payload) != want {
-		t.Fatalf("payload = %q", payload)
-	}
-}
-
 const canonInput = `{"z":1,"a":{"y":[3,"x",null,true],"b":"q\"uo\\te"},"m":"<&> é ✓   \u0001 \t\n","caps":["exec","fs:read"],"n":-1.50e3}`
 
 func TestCanonical(t *testing.T) {
@@ -260,7 +233,7 @@ func TestEncode(t *testing.T) {
 		t.Fatalf("decode: %v %+v", err, back)
 	}
 	// Hello always carries v, even when it is zero; chunks always carry n and last.
-	hl, _ := Encode(Hello{Envelope: Envelope{T: THello}, Key: "k", Nonce: "n"})
+	hl, _ := Encode(Hello{Envelope: Envelope{T: THello}, Key: "k"})
 	if !strings.Contains(string(hl), `"v":0`) {
 		t.Fatalf("hello without v: %s", hl)
 	}
@@ -347,7 +320,8 @@ func TestPatterns(t *testing.T) {
 	for _, c := range []struct{ pattern, value string }{
 		{KeyPattern, FormatKey(pub)},
 		{B64URLPattern, Nonce(32)},
-		{B64URLPattern, SignAuth(priv, []byte("a"), []byte("b"))},
+		{B64URLPattern, EncodeB64(ed25519.Sign(priv, []byte("a")))},
+		{AddressPattern, "awp1o2NrZXlYICz4lGVLe_5MyFCpuS1-L-EVBF8KHDCr9bieP7E5semX"},
 		{B64Pattern, base64.StdEncoding.EncodeToString([]byte("hello, world"))},
 		{B64Pattern, ""},
 	} {
@@ -355,7 +329,7 @@ func TestPatterns(t *testing.T) {
 			t.Errorf("%q does not match %s", c.value, c.pattern)
 		}
 	}
-	known := map[string]bool{KeyPattern: true, B64URLPattern: true, B64Pattern: true}
+	known := map[string]bool{KeyPattern: true, B64URLPattern: true, B64Pattern: true, AddressPattern: true}
 	seen := map[reflect.Type]bool{}
 	var walk func(rt reflect.Type)
 	walk = func(rt reflect.Type) {

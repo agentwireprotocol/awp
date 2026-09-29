@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,7 +20,11 @@ import (
 // startDaemon runs a daemon with its own home, listening on a Unix socket.
 func startDaemon(t *testing.T, name string) (*control.Client, string) {
 	t.Helper()
-	home := t.TempDir()
+	home, err := os.MkdirTemp("", "awpm") // short: unix socket paths are limited
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(home) })
 	sock := "unix:" + filepath.Join(home, "p.sock")
 	cfg := daemon.Config{Home: home, Name: name, Listen: []string{sock}}
 	errc := make(chan error, 1)
@@ -36,7 +41,11 @@ func startDaemon(t *testing.T, name string) (*control.Client, string) {
 		c.Call(context.Background(), "shutdown", nil, nil)
 		<-errc
 	})
-	return c, sock
+	var st api.Status
+	if err := c.Call(context.Background(), "status", nil, &st); err != nil || st.Address == "" {
+		t.Fatalf("status: %v %+v", err, st)
+	}
+	return c, st.Address
 }
 
 // session is an MCP client talking to a Server over pipes.

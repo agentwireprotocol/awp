@@ -18,7 +18,7 @@ func TestGenerated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for path, want := range map[string][]byte{"schema/v0/awp.schema.json": out.JSON, "schema/v0/schema.mdx": out.MDX} {
+	for path, want := range map[string][]byte{"schema/v1/awp.schema.json": out.JSON, "schema/v1/schema.mdx": out.MDX} {
 		have, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

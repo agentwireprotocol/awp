@@ -5,13 +5,13 @@ description: Every message of the protocol and its fields, generated from the re
 
 {/* Generated from the wire package of github.com/agentwireprotocol/awp by go generate ./wire. Do not edit by hand. */}
 
-Every line of a connection is one JSON object: the [envelope](#envelope) plus the fields of its message type, selected by `t`. This page is generated from the same source as the [JSON Schema](https://agentwireprotocol.com/schema/v0/awp.schema.json) (draft 2020-12), the `wire` package of the reference implementation, and lists the same constraints. Where it disagrees with [the specification](https://agentwireprotocol.com/spec), the specification wins and the schema has a bug.
+Every line of a connection is one JSON object: the [envelope](#envelope) plus the fields of its message type, selected by `t`. This page is generated from the same source as the [JSON Schema](https://agentwireprotocol.com/schema/v1/awp.schema.json) (draft 2020-12), the `wire` package of the reference implementation, and lists the same constraints. Where it disagrees with [the specification](https://agentwireprotocol.com/spec), the specification wins and the schema has a bug.
 
 Receivers ignore fields they do not know, and lines whose `t` they do not know, so no object here is closed. Messages marked *extension* are spoken by the reference implementation and not in the specification.
 
 ## Envelope
 
-Envelope holds the fields every line carries (section 6). The type-specific fields sit beside them at the top level.
+Envelope holds the fields every line carries (section 9). The type-specific fields sit beside them at the top level.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -29,35 +29,24 @@ Each message carries the envelope; the tables list the fields beside it.
 
 ### hello
 
-Hello is the first line each side sends, at once, without waiting for the other (section 7.1).
+Hello is the first line each side sends, at once, without waiting for the other (section 10.1).
 
 Envelope: `t` is `"hello"`.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `v` | integer, ≥ 0 | yes | `v` is the protocol major version. A peer that sees a version it does not speak sends err version and closes. |
-| `key` | string, `^ed25519:[A-Za-z0-9_-]{43}$` | yes | `key` is the long-term Ed25519 public key. Its bytes are the peer's identity. |
+| `v` | integer, ≥ 0 | yes | `v` is the protocol major version, 1 for draft 2. A peer that sees a version it does not speak sends err version and closes. |
+| `key` | string, `^ed25519:[A-Za-z0-9_-]{43}$` | yes | `key` is the sender's Ed25519 identity key. It must be the key on the other end of the tunnel (section 13.1), or the receiver sends err auth and closes. |
 | `name` | string |  | `name` is how the peer calls itself, "harness@host" by convention. |
-| `nonce` | string, `^[A-Za-z0-9_-]+$` | yes | `nonce` is 32 random bytes, base64url. The auth signature covers the whole hello line, nonce included. |
-| `caps` | array of string |  | `caps` lists the supported message families beyond the mandatory chat and resume: blob, grant, introduce, and any extension. |
-| `about` | string |  | `about` is free text for the other agent's context. It is not authenticated until auth completes. |
-| `addr` | string |  | `addr` is an extension: an address at which the sender can be reached, so that either side can reconnect (section 4.3). Peers that do not know it ignore it, as section 5 requires. |
+| `caps` | array of string |  | `caps` lists the supported message families beyond the mandatory core: blob, grant, introduce, and any extension. |
+| `about` | string |  | `about` is free text for the other agent's context. |
+| `addr` | string, `^awp1[A-Za-z0-9_-]+$` |  | `addr` is the sender's own address without its pre-shared key, so the other side can reconnect to it later (section 13.3). |
+| `grants` | array of [Grant](#grant-object) |  | `grants` are grant objects (section 13.2) the sender presents. |
 | `shares` | array of string |  | `shares` is an extension (mirror.go): the keys of the hosts this agent mirrors its conversations to, so the other party knows. |
-
-### auth
-
-Auth proves possession of the key sent in hello (section 7.2).
-
-Envelope: `t` is `"auth"`.
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `sig` | string, `^[A-Za-z0-9_-]+$` | yes | `sig` is the Ed25519 signature, base64url, over "awp-auth-v0" \|\| 0x00 \|\| my hello line \|\| 0x00 \|\| peer hello line, the lines as sent and received without the newline. |
-| `grants` | array of [Grant](#grant-object) |  | `grants` are grant objects (section 10.2) the sender presents. |
 
 ### resume
 
-Resume is sent by both sides after every handshake (section 9.5). The receiver replays its outbox messages the sender has not seen.
+Resume is sent by both sides after every handshake (section 12.5). The receiver replays its outbox messages the sender has not seen.
 
 Envelope: `t` is `"resume"`.
 
@@ -67,7 +56,7 @@ Envelope: `t` is `"resume"`.
 
 ### state
 
-State is the sender's view of a thread's soft state (section 8.1). The two sides can disagree.
+State is the sender's view of a thread's soft state (section 11.1). The two sides can disagree.
 
 Envelope: `t` is `"state"`; `th` is required.
 
@@ -78,7 +67,7 @@ Envelope: `t` is `"state"`; `th` is required.
 
 ### msg
 
-Msg is one turn in a thread (section 9.1). The first msg with a new th creates the thread.
+Msg is one turn in a thread (section 12.1). The first msg with a new th creates the thread.
 
 Envelope: `t` is `"msg"`; `th` is required.
 
@@ -95,7 +84,7 @@ Envelope: `t` is `"ack"`; `th` and `re` are required.
 
 ### chunk
 
-Chunk carries part of a blob (section 9.3). Chunks of one blob arrive in order; chunks of different blobs may interleave. A chunk carries th when the blob belongs to a thread, so that resume replays it like any other threaded message.
+Chunk carries part of a blob (section 12.3). Chunks of one blob arrive in order; chunks of different blobs may interleave. A chunk carries th when the blob belongs to a thread, so that resume replays it like any other threaded message.
 
 Envelope: `t` is `"chunk"`.
 
@@ -108,7 +97,7 @@ Envelope: `t` is `"chunk"`.
 
 ### ping
 
-Ping is a liveness probe (section 9.4): sent when idle for 30 seconds by convention; two missed pongs mean the connection is dead.
+Ping is a liveness probe (section 12.4): sent when idle for 30 seconds by convention; two missed pongs mean the connection is dead.
 
 Envelope: `t` is `"ping"`.
 
@@ -120,7 +109,7 @@ Envelope: `t` is `"pong"`; `re` is required.
 
 ### bye
 
-Bye is a graceful close (section 9.6). After sending it a peer sends nothing else and closes after the other side's bye or after 5 seconds.
+Bye is a graceful close (section 12.6). After sending it a peer sends nothing else and closes after the other side's bye or after 5 seconds.
 
 Envelope: `t` is `"bye"`.
 
@@ -130,29 +119,29 @@ Envelope: `t` is `"bye"`.
 
 ### err
 
-Err reports a problem (section 9.7). Whether it closes the connection depends on the code: bad_frame, version, auth and too_large do, unsupported, forbidden, blob_refused and internal do not.
+Err reports a problem (section 12.7). Whether it closes the connection depends on the code: bad_frame, too_large, version, auth and refused do, unsupported, forbidden, blob_refused and internal do not.
 
 Envelope: `t` is `"err"`.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `code` | string, one of `bad_frame`, `version`, `auth`, `unsupported`, `forbidden`, `blob_refused`, `too_large`, `internal` | yes | `code` is the error code. |
+| `code` | string, one of `bad_frame`, `too_large`, `version`, `auth`, `refused`, `unsupported`, `forbidden`, `blob_refused`, `internal` | yes | `code` is the error code. |
 | `detail` | string |  | `detail` is human readable. |
 | `ref` | string |  | `ref` names the blob a blob_refused is about. |
 
 ### grant
 
-GrantMsg delivers a grant after the handshake (section 10.3).
+GrantMsg delivers a grant after the handshake (section 13.3).
 
 Envelope: `t` is `"grant"`.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `grant` | [Grant](#grant-object) | yes | `grant` is the grant object (section 10.2). |
+| `grant` | [Grant](#grant-object) | yes | `grant` is the grant object (section 13.2). |
 
 ### introduce
 
-Introduce hands the recipient another peer's identity and address plus a grant issued by the introducer (section 10.4). The introduced peer honors the grant only if it trusts the introducer with introduce.
+Introduce hands the recipient another peer's identity and address plus a grant issued by the introducer (section 13.4). The introduced peer honors the grant only if it trusts the introducer with introduce.
 
 Envelope: `t` is `"introduce"`.
 
@@ -218,7 +207,7 @@ Fenced code without the fence; lang names the language.
 
 ### data part
 
-Inline JSON, with its MIME type. Requests (section 10.1) are data parts of a vnd.awp type.
+Inline JSON, with its MIME type. Requests (section 13.1) are data parts of a vnd.awp type.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -242,13 +231,13 @@ Objects carried inside messages.
 
 ### Grant object
 
-GrantObject is the wire form of a grant (section 10.2): a signed statement that sub may use caps until exp, honored by iss and by whoever trusts iss. sig is iss's Ed25519 signature over the canonical JSON of the object without sig: keys sorted, no whitespace, UTF-8.
+GrantObject is the wire form of a grant (section 13.2): a signed statement that sub may use caps until exp, honored by iss and by whoever trusts iss. sig is iss's Ed25519 signature over the canonical JSON of the object without sig: keys sorted, no whitespace, UTF-8.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `iss` | string, `^ed25519:[A-Za-z0-9_-]{43}$` | yes | `iss` is the granting key. |
 | `sub` | string, `^ed25519:[A-Za-z0-9_-]{43}$` | yes | `sub` is the receiving key. |
-| `caps` | array of string | yes | `caps` are the capability strings granted (section 10.1). |
+| `caps` | array of string | yes | `caps` are the capability strings granted (section 13.1). |
 | `exp` | string, date-time | yes | `exp` is when the grant expires, RFC 3339. |
 | `nonce` | string, `^[A-Za-z0-9_-]+$` | yes | `nonce` makes each grant distinct, base64url. |
 | `sig` | string, `^[A-Za-z0-9_-]+$` | yes | `sig` is the issuer's signature, base64url. |
@@ -262,7 +251,7 @@ IntroPeer identifies the introduced peer.
 |---|---|---|---|
 | `key` | string, `^ed25519:[A-Za-z0-9_-]{43}$` | yes | Key is the introduced peer's public key. |
 | `name` | string |  | Name is what the introduced peer calls itself. |
-| `address` | string |  | Address is where the introduced peer listens, a hint: the key is the identity. |
+| `address` | string, `^awp1[A-Za-z0-9_-]+$` |  | Address is the introduced peer's address (section 9). It carries the pre-shared key only when the introducer holds one. |
 
 ### Presence document
 

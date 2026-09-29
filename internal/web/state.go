@@ -110,8 +110,8 @@ type State struct {
 	HostName string    `json:"host_name"`
 	Presence bool      `json:"presence"`
 	Address  string    `json:"address,omitempty"`
-	// Listeners are the addresses this host accepts connections on, and
-	// TailcatError why its tailcat listener is not up, if it is not.
+	// Listeners are the endpoints this host accepts connections on, and
+	// TailcatError why its tailcat carrier is not up, if it is not.
 	Listeners    []string `json:"listeners"`
 	TailcatError string   `json:"tailcat_error,omitempty"`
 	Agents       []Agent  `json:"agents"`
@@ -163,7 +163,7 @@ func realAbout(s string) string {
 // agent's presence.
 func buildState(st *api.Status, local []*store.Thread, net *api.Network, mirrored []store.MirroredThread, now time.Time) *State {
 	s := &State{At: now, Version: st.Version, Self: st.Key, HostName: st.Name, Presence: st.Presence, Address: st.ShareAddress(),
-		Listeners: append([]string{}, st.Addresses...), TailcatError: st.TailcatErr,
+		Listeners: append([]string{}, st.Endpoints...), TailcatError: st.Pending["tailcat"],
 		Agents: []Agent{}, Links: []Link{}, Threads: []Thread{}}
 	if net == nil {
 		net = &api.Network{}

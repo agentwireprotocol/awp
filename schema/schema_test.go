@@ -124,9 +124,8 @@ func TestGoMessages(t *testing.T) {
 	}}
 	msgLine, _ := wire.Encode(msg)
 	messages := map[string]any{
-		wire.THello: wire.Hello{Envelope: env("hello", "", ""), V: wire.Version, Key: key, Name: "go@test", Nonce: wire.Nonce(32),
-			Caps: []string{"chat", "blob"}, About: "test", Addr: "unix:/tmp/x", Shares: []string{otherKey}},
-		wire.TAuth:      wire.Auth{Envelope: env("auth", "", ""), Sig: wire.SignAuth(priv, []byte("a"), []byte("b")), Grants: []json.RawMessage{grant.Raw}},
+		wire.THello: wire.Hello{Envelope: env("hello", "", ""), V: wire.Version, Key: key, Name: "go@test",
+			Caps: []string{"chat", "blob"}, About: "test", Addr: "awp1o2NrZXlYICz4lGVLe_5MyFCpuS1-L-EVBF8KHDCr9bieP7E5semX", Grants: []json.RawMessage{grant.Raw}, Shares: []string{otherKey}},
 		wire.TResume:    wire.Resume{Envelope: env("resume", "", ""), Seen: map[string]string{"t1": ids.New()}},
 		wire.TMsg:       msg,
 		wire.TState:     wire.State{Envelope: env("state", "t1", ""), State: "working", Note: "n"},
@@ -137,7 +136,7 @@ func TestGoMessages(t *testing.T) {
 		wire.TBye:       wire.Bye{Envelope: env("bye", "", ""), Reason: "done"},
 		wire.TErr:       wire.Err{Envelope: env("err", "", ""), Code: wire.ErrBlobRefused, Detail: "too big", Ref: "b1"},
 		wire.TGrant:     wire.GrantMsg{Envelope: env("grant", "", ""), Grant: grant.Raw},
-		wire.TIntroduce: wire.Introduce{Envelope: env("introduce", "t1", ""), Peer: wire.IntroPeer{Key: otherKey, Name: "o", Address: "tailcat:tc0"}, Grant: grant.Raw},
+		wire.TIntroduce: wire.Introduce{Envelope: env("introduce", "t1", ""), Peer: wire.IntroPeer{Key: otherKey, Name: "o", Address: "awp1o2NrZXlYICz4lGVLe_5MyFCpuS1-L-EVBF8KHDCr9bieP7E5semX"}, Grant: grant.Raw},
 		wire.TPresence:  wire.PresenceMsg{Envelope: env("presence", "", ""), Doc: presence, Hops: 1},
 		wire.TMirror:    wire.Mirror{Envelope: env("mirror", "t1", ""), Of: otherKey, OfName: "o", Subject: "s", Dir: "out", Line: msgLine},
 		wire.TPrivate:   wire.Private{Envelope: env("private", "t1", "")},
@@ -188,8 +187,8 @@ func TestRejects(t *testing.T) {
 		"unknown part":       fmt.Sprintf(`{"t":"msg","id":"x","ts":"%s","th":"t","parts":[{"k":"hologram"}]}`, ts),
 		"text part empty":    fmt.Sprintf(`{"t":"msg","id":"x","ts":"%s","th":"t","parts":[{"k":"text"}]}`, ts),
 		"blob no size":       fmt.Sprintf(`{"t":"msg","id":"x","ts":"%s","th":"t","parts":[{"k":"blob","ref":"r"}]}`, ts),
-		"hello bad key":      fmt.Sprintf(`{"t":"hello","id":"x","ts":"%s","v":0,"key":"rsa:abc","nonce":"abc"}`, ts),
-		"hello v string":     fmt.Sprintf(`{"t":"hello","id":"x","ts":"%s","v":"0","key":"ed25519:%s","nonce":"abc"}`, ts, strings.Repeat("A", 43)),
+		"hello bad key":      fmt.Sprintf(`{"t":"hello","id":"x","ts":"%s","v":1,"key":"rsa:abc"}`, ts),
+		"hello v string":     fmt.Sprintf(`{"t":"hello","id":"x","ts":"%s","v":"1","key":"ed25519:%s"}`, ts, strings.Repeat("A", 43)),
 		"err bad code":       fmt.Sprintf(`{"t":"err","id":"x","ts":"%s","code":"oops"}`, ts),
 		"chunk bad data":     fmt.Sprintf(`{"t":"chunk","id":"x","ts":"%s","ref":"r","n":0,"last":true,"data":"not base64!"}`, ts),
 		"chunk n negative":   fmt.Sprintf(`{"t":"chunk","id":"x","ts":"%s","ref":"r","n":-1,"last":true,"data":"aGk="}`, ts),
