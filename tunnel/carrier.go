@@ -65,6 +65,54 @@ func (l *lenConn) writePacket(p []byte) error {
 
 func (l *lenConn) Close() error { return l.c.Close() }
 
+// queued gives a pconn a bounded send queue drained by its own goroutine,
+// so a slow connection (a rate-limited relay, a congested proxy) drops
+// datagrams like a full UDP socket instead of blocking WireGuard.
+type queued struct {
+	pconn
+	q    chan []byte
+	done chan struct{}
+	once sync.Once
+}
+
+const sendQueue = 256
+
+func newQueued(pc pconn) *queued {
+	q := &queued{pconn: pc, q: make(chan []byte, sendQueue), done: make(chan struct{})}
+	go func() {
+		for {
+			select {
+			case p := <-q.q:
+				if err := q.pconn.writePacket(p); err != nil {
+					q.Close()
+					return
+				}
+			case <-q.done:
+				return
+			}
+		}
+	}()
+	return q
+}
+
+func (q *queued) writePacket(p []byte) error {
+	select {
+	case <-q.done:
+		return net.ErrClosed
+	default:
+	}
+	select {
+	case q.q <- append([]byte(nil), p...):
+	default: // full: drop, as UDP would
+	}
+	return nil
+}
+
+func (q *queued) Close() error {
+	q.once.Do(func() { close(q.done) })
+	return q.pconn.Close()
+}
+
 // mux is a carrier made of connections: accepted ones are addressed as
 // "@n", dialed ones by their endpoint value. A send to an endpoint with no
 // connection dials in the background and queues a few datagrams meanwhile;
@@ -129,6 +177,7 @@ func (m *mux) accept(pc pconn) {
 	}
 	m.next++
 	id := fmt.Sprintf("@%d", m.next)
+	pc = newQueued(pc)
 	m.accepted[id] = pc
 	m.mu.Unlock()
 	go m.read(pc, id, func() {
@@ -209,6 +258,7 @@ func (m *mux) dialSlot(to string, s *slot) {
 		}
 		return
 	}
+	pc = newQueued(pc)
 	s.c = pc
 	q := s.queue
 	s.queue = nil

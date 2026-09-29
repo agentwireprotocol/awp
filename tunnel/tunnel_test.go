@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +42,9 @@ func TestSpecVectors(t *testing.T) {
 	if got := xpub.String(); got != "O7KNWfmBVF214-z17qtor-Hl4UWIDOerTw_nad9Vn1Q" {
 		t.Errorf("X25519 public %s", got)
 	}
+	if got := IP(xpub).String(); got != "fdea:9171:7e2f:c57a:5d92:7d7:169b:67fb" {
+		t.Errorf("tunnel IP %s", got)
+	}
 	// The converted private key's public key is the converted public key.
 	check, _ := curve25519.X25519(xpriv[:], curve25519.Basepoint)
 	if string(check) != string(xpub[:]) {
@@ -50,6 +54,28 @@ func TestSpecVectors(t *testing.T) {
 		p := exampleKey(n)
 		k, _ := X25519Public(p.Public().(ed25519.PublicKey))
 		t.Logf("%s ed25519:%s X25519 %s ip %s", n, b64(p.Public().(ed25519.PublicKey)), k, IP(k))
+	}
+}
+
+// TestSpecAddresses decodes every address in SPEC.md.
+func TestSpecAddresses(t *testing.T) {
+	src, err := os.ReadFile("../SPEC.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := regexp.MustCompile(`awp1[A-Za-z0-9_-]{40,}`).FindAllString(string(src), -1)
+	if len(found) < 3 {
+		t.Fatalf("found %d addresses in SPEC.md", len(found))
+	}
+	for _, s := range found {
+		a, err := ParseAddress(s)
+		if err != nil {
+			t.Errorf("%s: %v", s, err)
+			continue
+		}
+		if a.String() != s {
+			t.Errorf("%s does not re-encode to itself (not deterministic CBOR)", s)
+		}
 	}
 }
 
@@ -321,4 +347,37 @@ func carrierLive(t *testing.T, spec string) {
 	roundTrip(t, s, a, "through "+spec)
 	roundTrip(t, s, a, strings.Repeat("y", 100000))
 	io.WriteString(s, "")
+}
+
+// TestTwoPaths: a listener on two carriers. Repeated dials are quick (no
+// replayed handshakes, one response per initiation), and when the
+// preferred path dies mid-stream the stream carries on over the other.
+func TestTwoPaths(t *testing.T) {
+	b := newPeer(t, "", "udp:127.0.0.1:0", "ws:127.0.0.1:0")
+	echo(b)
+	a := newPeer(t, "")
+	for i := 0; i < 6; i++ {
+		start := time.Now()
+		s := dial(t, a, b.t.Address())
+		roundTrip(t, s, a, fmt.Sprintf("dial %d", i))
+		if d := time.Since(start); d > 2*time.Second {
+			t.Errorf("dial %d took %v", i, d)
+		}
+		if i < 5 {
+			s.Close()
+			continue
+		}
+		if !strings.HasPrefix(s.Via(), "udp:") {
+			t.Fatalf("via %s, want the udp path preferred", s.Via())
+		}
+		// The udp path dies; the ws path takes over.
+		b.t.udp.close()
+		start = time.Now()
+		roundTrip(t, s, a, "after udp died")
+		t.Logf("failover took %v, now via %s", time.Since(start).Round(time.Millisecond), s.Via())
+		if !strings.HasPrefix(s.Via(), "ws:") {
+			t.Errorf("via %s after udp died", s.Via())
+		}
+		s.Close()
+	}
 }

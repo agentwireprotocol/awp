@@ -419,12 +419,6 @@ func (t *Tunnel) Dial(ctx context.Context, addrs ...Address) (*Stream, error) {
 	if len(psks) == 0 {
 		psks = append(psks, [32]byte{})
 	}
-	// A dial means the last stream is gone. Whatever session WireGuard
-	// still holds may be one the peer lost in a restart; start afresh
-	// rather than wait for WireGuard to notice.
-	if p, ok := t.dev.LookupActivePeer(device.NoisePublicKey(k)); ok {
-		p.ExpireCurrentKeypairs()
-	}
 	var lastErr error
 	for i, psk := range psks {
 		if err := t.configure(k, psk); err != nil {
@@ -434,7 +428,7 @@ func (t *Tunnel) Dial(ctx context.Context, addrs ...Address) (*Stream, error) {
 		if i < len(psks)-1 {
 			actx, cancel = context.WithTimeout(ctx, 12*time.Second)
 		}
-		c, err := t.tun.dialTCP(actx, netip.AddrPortFrom(IP(k), Port))
+		c, err := t.dialStream(actx, k)
 		cancel()
 		if err == nil {
 			t.st.setPair(k, psk)
@@ -446,6 +440,27 @@ func (t *Tunnel) Dial(ctx context.Context, addrs ...Address) (*Stream, error) {
 		}
 	}
 	return nil, fmt.Errorf("no tunnel to %s: %w", a.KeyString(), lastErr)
+}
+
+// dialStream opens the TCP stream to k's port 1. It first rides whatever
+// session WireGuard holds; if that goes nowhere for a few seconds (the
+// peer restarted and lost it, or moved), it forces a fresh handshake
+// rather than wait the 15 seconds WireGuard takes to notice by itself.
+func (t *Tunnel) dialStream(ctx context.Context, k Key) (net.Conn, error) {
+	to := netip.AddrPortFrom(IP(k), Port)
+	quick, cancel := context.WithTimeout(ctx, 3*time.Second)
+	c, err := t.tun.dialTCP(quick, to)
+	cancel()
+	if err == nil {
+		return c, nil
+	}
+	if ctx.Err() != nil {
+		return nil, err
+	}
+	if p, ok := t.dev.LookupActivePeer(device.NoisePublicKey(k)); ok {
+		p.ExpireCurrentKeypairs()
+	}
+	return t.tun.dialTCP(ctx, to)
 }
 
 // configure adds or updates the WireGuard peer for k.

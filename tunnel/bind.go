@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/tailscale/wireguard-go/conn"
 )
@@ -147,10 +148,32 @@ type peerEP struct {
 	b   *bind
 	key Key
 
-	mu    sync.Mutex
-	cur   *path  // where the last authenticated packet came from
-	cands []path // endpoints from addresses, and paths initiations came from
+	mu     sync.Mutex
+	cur    *path     // where authenticated packets come from, the preferred path
+	heard  time.Time // when cur last delivered one
+	cands  []path    // endpoints from addresses, and paths initiations came from
+	init   *path     // where the latest initiation came from: the response goes back that way
+	initAt time.Time
 }
+
+// rank orders carrier kinds by preference: direct before relayed.
+func rank(kind string) int {
+	switch kind {
+	case KindUnix:
+		return 0
+	case KindUDP:
+		return 1
+	case KindWS:
+		return 2
+	case KindTailcat:
+		return 3
+	}
+	return 4
+}
+
+// stale is how long the current path may be silent before a less
+// preferred one takes over.
+const stale = 3 * time.Second
 
 // addCands adds candidate paths, newest first.
 func (e *peerEP) addCands(ps ...path) {
@@ -175,10 +198,17 @@ func (e *peerEP) addCands(ps ...path) {
 	e.cands = out
 }
 
-func (e *peerEP) setCur(p path) {
+// heardFrom records an authenticated packet on p. p becomes the current
+// path if it is the current one, as good a kind (a peer that moved, on the
+// same carrier), or the current one has gone quiet.
+func (e *peerEP) heardFrom(p path) {
+	now := time.Now()
 	e.mu.Lock()
-	e.cur = &p
-	e.mu.Unlock()
+	defer e.mu.Unlock()
+	if e.cur == nil || *e.cur == p || rank(p.kind) <= rank(e.cur.kind) || now.Sub(e.heard) > stale {
+		e.cur = &p
+		e.heard = now
+	}
 }
 
 func (e *peerEP) current() string {
@@ -190,6 +220,19 @@ func (e *peerEP) current() string {
 	return e.cur.String()
 }
 
+// initiatedFrom records the path an initiation arrived on. A peer that
+// sends one initiation down several paths reaches us on each; the
+// response goes back on the most preferred of them.
+func (e *peerEP) initiatedFrom(p path) {
+	now := time.Now()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.init == nil || rank(p.kind) <= rank(e.init.kind) || now.Sub(e.initAt) > time.Second {
+		e.init = &p
+		e.initAt = now
+	}
+}
+
 // WireGuard message types, the first byte of every datagram.
 const (
 	msgInitiation = 1
@@ -198,10 +241,15 @@ const (
 
 func (e *peerEP) send(pkt []byte) error {
 	e.mu.Lock()
-	cur := e.cur
+	cur, init := e.cur, e.init
 	cands := append([]path{}, e.cands...)
 	e.mu.Unlock()
-	handshake := len(pkt) > 0 && (pkt[0] == msgInitiation || pkt[0] == msgResponse)
+	if len(pkt) > 0 && pkt[0] == msgResponse && init != nil {
+		if err := e.b.sendPath(*init, pkt); err == nil {
+			return nil
+		}
+	}
+	handshake := len(pkt) > 0 && pkt[0] == msgInitiation
 	if cur != nil {
 		err := e.b.sendPath(*cur, pkt)
 		if err == nil && !handshake {
@@ -246,10 +294,12 @@ type pathEP struct {
 }
 
 func (e *pathEP) InitiationMessagePublicKey(pk [32]byte) {
-	e.b.peer(Key(pk)).addCands(e.p)
+	ep := e.b.peer(Key(pk))
+	ep.addCands(e.p)
+	ep.initiatedFrom(e.p)
 }
 
-func (e *pathEP) FromPeer(pk [32]byte) { e.b.peer(Key(pk)).setCur(e.p) }
+func (e *pathEP) FromPeer(pk [32]byte) { e.b.peer(Key(pk)).heardFrom(e.p) }
 
 func (e *pathEP) ClearSrc()           {}
 func (e *pathEP) SrcToString() string { return "" }
