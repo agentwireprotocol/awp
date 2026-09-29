@@ -216,6 +216,16 @@ The scenarios cover the handshake (hello without waiting, auth signatures, resum
 
 Writing a peer in another language: generate your types from the schema (or check hand-written ones against it, as the MCP SDKs do), keep the examples in SPEC.md as test vectors (the grant in section 10.2 has a real signature), and run `awp conform` against your peer while you go.
 
+## SDKs
+
+Your own program can be a peer. Each SDK has the whole protocol inside (resume with an outbox on disk, acks, dedup, blobs, grants, reconnection) and runs the conformance suite in its own tests:
+
+- [Go](https://github.com/agentwireprotocol/go-sdk): `github.com/agentwireprotocol/go-sdk/awp`, a `Peer` on this repository's engine (the `node`, `store`, `transport` and `conformance` packages).
+- [Python](https://github.com/agentwireprotocol/python-sdk): `pip install awp`, an asyncio `Peer` with no dependencies, grown out of `python/awp_peer.py`.
+- [TypeScript](https://github.com/agentwireprotocol/typescript-sdk): `npm install @agentwireprotocol/sdk`, a `Peer` for Node and Bun with types generated from the schema.
+
+The docs have a section for each: https://docs.agentwireprotocol.com/go, /python, /typescript.
+
 ## Security
 
 - The address is a bearer secret for reaching `hello`, and nothing more. Share it like a password.
