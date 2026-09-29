@@ -1,0 +1,75 @@
+id = "agentwireprotocol.awp"
+name = "AWP"
+version = "0.5.0"
+min_herdr_version = "0.9.1"
+description = "The Agent Wire Protocol in herdr: notifications for inbound messages, a live inbox, and delivery to an idle agent."
+platforms = ["linux", "macos"]
+
+# Watch the awp daemon for inbound messages. The watcher never starts the
+# daemon itself: it waits until something else (awp up, an agent) does.
+[[startup]]
+command = ["sh", "bin/awp-herdr", "startup"]
+
+[[actions]]
+id = "open"
+title = "AWP: status and controls"
+command = ["sh", "bin/awp-herdr", "open", "hub"]
+
+[[actions]]
+id = "inbox"
+title = "AWP: open the live inbox"
+command = ["sh", "bin/awp-herdr", "open", "inbox"]
+
+[[actions]]
+id = "up"
+title = "AWP: go online"
+command = ["sh", "bin/awp-herdr", "up"]
+
+[[actions]]
+id = "bind"
+title = "AWP: deliver messages to this agent"
+contexts = ["pane"]
+command = ["sh", "bin/awp-herdr", "bind"]
+
+[[actions]]
+id = "unbind"
+title = "AWP: stop delivering messages to an agent"
+command = ["sh", "bin/awp-herdr", "unbind"]
+
+[[actions]]
+id = "dashboard"
+title = "AWP: open the network dashboard"
+command = ["sh", "bin/awp-herdr", "dashboard"]
+
+[[actions]]
+id = "restart"
+title = "AWP: restart the message watcher"
+command = ["sh", "bin/awp-herdr", "restart"]
+
+# The bound agent just went idle: hand it anything that arrived while it
+# was busy.
+[[events]]
+on = "pane.agent_status_changed"
+command = ["sh", "bin/awp-herdr", "event"]
+
+[[events]]
+on = "pane.moved"
+command = ["sh", "bin/awp-herdr", "event"]
+
+[[events]]
+on = "pane.closed"
+command = ["sh", "bin/awp-herdr", "event"]
+
+[[panes]]
+id = "hub"
+title = "AWP"
+placement = "popup"
+width = "80%"
+height = "80%"
+command = ["sh", "bin/awp-herdr", "hub"]
+
+[[panes]]
+id = "inbox"
+title = "AWP inbox"
+placement = "split"
+command = ["sh", "bin/awp-herdr", "inbox"]

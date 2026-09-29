@@ -14,6 +14,7 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 - The engine packages `node`, `store`, `transport` and `conformance` are public (they were `internal`), so the Go SDK builds on them. Their API follows this implementation's releases; the SDK is the supported surface.
 - SDKs, one repository each: [go-sdk](https://github.com/agentwireprotocol/go-sdk), [python-sdk](https://github.com/agentwireprotocol/python-sdk) and [typescript-sdk](https://github.com/agentwireprotocol/typescript-sdk). Each has a `Peer` with the whole protocol inside and runs `awp conform` in its tests.
 - `wire` names what the schema is generated from: `Messages()`, `PartKinds()`, `ErrCodes()`, `ThreadStates()`, `Extensions()`, the `GrantObject` wire form, and the `KeyPattern`, `B64URLPattern` and `B64Pattern` constants.
+- A [herdr](https://herdr.dev) plugin, in `plugin/herdr`: notifications for inbound messages and for a peer's `waiting`, `done` and `failed`, a live inbox pane, a status popup, and delivery to a bound agent, which is prompted to read new messages when it is idle. Install it with `herdr plugin install agentwireprotocol/awp/plugin/herdr`. Its manifest version is one of the release's version markers.
 
 ## [0.5.0] - 2026-09-28
 
