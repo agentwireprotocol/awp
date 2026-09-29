@@ -133,6 +133,8 @@ In a test, a Claude Code session with only this plugin loaded was told in plain 
 herdr plugin install agentwireprotocol/awp/plugin/herdr
 ```
 
+Every plugin is documented at https://docs.agentwireprotocol.com/plugins.
+
 ## CLI
 
 | command | what it does |
