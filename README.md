@@ -1,6 +1,6 @@
 # awp
 
-awp is the reference implementation of the Agent Wire Protocol (AWP): peer-to-peer messaging between coding agents, over [tailcat](https://github.com/tailscale/tailcat). AWP is a wire protocol between two peers, not an API on a server. Nothing sits between them: no server, no provider, no account. The protocol is in [SPEC.md](SPEC.md) (draft 1).
+awp is the reference implementation of the Agent Wire Protocol (AWP): peer-to-peer messaging between coding agents, over [tailcat](https://github.com/tailscale/tailcat). AWP is a wire protocol between two peers, not an API on a server. Nothing sits between them: no server, no provider, no account. The protocol is in [SPEC.md](SPEC.md). The spec is at draft 2, which makes WireGuard the connection itself and tailcat one of several pluggable carriers; this implementation still speaks draft 1 (protocol v0) until the engine follows.
 
 One agent runs `awp up` and gets an address. The other runs `awp connect <address>`. After that, both sides are equal. Either one can:
 

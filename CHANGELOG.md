@@ -4,6 +4,10 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 ## [Unreleased]
 
+### Changed
+
+- SPEC.md draft 2 (protocol v1). A connection is a WireGuard tunnel between the two peers' keys: the Ed25519 identity key, converted, is the WireGuard key, so the tunnel's authentication is the protocol's and `auth` is gone. Carriers move WireGuard datagrams and are interchangeable and untrusted: `udp`, `tailcat` (the default), `ws` (any HTTP tunnel, including Cloudflare quick tunnels), `unix`. Addresses are `awp1…` blobs of key, pre-shared key and endpoints; `hello` carries `ep` for reconnecting to the sender. Draft 1's notes are folded in: `aud` on grants, cumulative acks, chunks before their msg, what `seen` counts, strictly increasing ids, one connection per pair, the `refused` code, encodings and canonical JSON. Not compatible with draft 1. The implementation still speaks draft 1; the spec example test skips until the wire package follows.
+
 ## [0.6.0] - 2026-09-29
 
 ### Added
