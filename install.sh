@@ -2,7 +2,7 @@
 # Install awp: the binary for this machine from a GitHub release, then
 # set it up in your agent harnesses (awp bootstrap).
 #
-#   curl -fsSL https://raw.githubusercontent.com/agentwireprotocol/awp/main/install.sh | sh
+#   curl -fsSL https://agentwireprotocol.com/install.sh | sh
 #
 # Settings (environment variables):
 #   AWP_VERSION=0.5.0            install this release (default: the latest)
