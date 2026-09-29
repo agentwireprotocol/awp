@@ -235,3 +235,60 @@ func TestAcceptThroughHelper(t *testing.T) {
 		}
 	}
 }
+
+func control(t *testing.T, s *sdk, req string) dialReply {
+	t.Helper()
+	c, err := net.Dial("unix", s.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(30 * time.Second))
+	fmt.Fprintln(c, req)
+	line, err := bufio.NewReader(c).ReadBytes('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r dialReply
+	if err := json.Unmarshal(line, &r); err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// TestListenAndRotate: carriers added at run time, and a rotated
+// pre-shared key.
+func TestListenAndRotate(t *testing.T) {
+	s := startHelper(t)
+	if s.ready.Address != "" {
+		t.Fatalf("an address before listening: %q", s.ready.Address)
+	}
+	r := control(t, s, `{"listen":"udp:127.0.0.1:0"}`)
+	if !r.OK || r.Address == "" || r.Public == "" {
+		t.Fatalf("listen: %+v", r)
+	}
+	if ev := s.event(); ev.Event != "address" || ev.Address != r.Address {
+		t.Fatalf("address event %+v", ev)
+	}
+	r2 := control(t, s, fmt.Sprintf(`{"listen":"unix:%s"}`, filepath.Join(tempDir(t), "l.sock")))
+	a, err := tunnel.ParseAddress(r2.Address)
+	if err != nil || len(a.Endpoints) != 2 {
+		t.Fatalf("two carriers: %+v %v", a, err)
+	}
+	if r := control(t, s, `{"listen":"nope:1"}`); r.OK || r.Error == "" {
+		t.Fatalf("bad carrier accepted: %+v", r)
+	}
+	rot := control(t, s, `{"rotate":true}`)
+	if !rot.OK || rot.Address == r2.Address || rot.Public != r2.Public {
+		t.Fatalf("rotate: %+v", rot)
+	}
+	n := startNode(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	go n.Connect(ctx, rot.Address)
+	c, err := s.fwd.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+}

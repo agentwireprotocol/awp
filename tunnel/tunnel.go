@@ -189,20 +189,47 @@ func (t *Tunnel) listening() bool {
 // the background, since they take seconds; Changed is called when they do.
 // Start fails only if a local carrier (udp, unix, ws) cannot listen.
 func (t *Tunnel) Start() error {
-	for i, spec := range t.cfg.Listen {
-		kind, arg, _ := strings.Cut(spec, ":")
-		switch kind {
-		case KindTailcat, "cloudflare":
-			go t.listenRetry(i, spec)
-			continue
+	t.mu.Lock()
+	specs := t.cfg.Listen
+	t.cfg.Listen = nil
+	t.mu.Unlock()
+	for _, spec := range specs {
+		if err := t.Listen(spec); err != nil {
+			return err
 		}
-		es, err := t.listenOne(t.ctx, spec)
-		if err != nil {
-			return fmt.Errorf("listen %s: %w", spec, err)
-		}
-		_ = arg
-		t.setEndpoints(i, es)
 	}
+	return nil
+}
+
+// Listen adds a carrier to listen on, as in Config.Listen. A local carrier
+// is up when Listen returns; tailcat and cloudflare come up in the
+// background (Pending says how they are doing). Listening on a carrier
+// already listened on does nothing.
+func (t *Tunnel) Listen(spec string) error {
+	t.mu.Lock()
+	for _, s := range t.cfg.Listen {
+		if s == spec {
+			t.mu.Unlock()
+			return nil
+		}
+	}
+	i := len(t.cfg.Listen)
+	t.cfg.Listen = append(t.cfg.Listen, spec)
+	t.mu.Unlock()
+	kind, _, _ := strings.Cut(spec, ":")
+	switch kind {
+	case KindTailcat, "cloudflare":
+		go t.listenRetry(i, spec)
+		return nil
+	}
+	es, err := t.listenOne(t.ctx, spec)
+	if err != nil {
+		t.mu.Lock()
+		t.errs[spec] = err.Error()
+		t.mu.Unlock()
+		return fmt.Errorf("listen %s: %w", spec, err)
+	}
+	t.setEndpoints(i, es)
 	return nil
 }
 

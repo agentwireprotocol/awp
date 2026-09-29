@@ -7,13 +7,22 @@
 // event, then an "address" event each time the address changes. It exits
 // when stdin closes, so it never outlives the SDK that started it.
 //
-// Dialing: the SDK connects to the control socket and writes one line,
+// Requests: the SDK connects to the control socket and writes one line.
 //
 //	{"dial": ["awp1...", ...], "key": "ed25519:..."}
 //
-// (addresses of one peer, and/or a key the tunnel already knows); the
-// helper answers {"ok":true,"key":...,"via":...} or {"ok":false,"error":...}
-// and the connection becomes the stream.
+// dials a peer (addresses of one peer, and/or a key the tunnel already
+// knows); the helper answers {"ok":true,"key":...,"via":...} or
+// {"ok":false,"error":...}, and the connection becomes the stream.
+//
+//	{"listen": "tailcat"}
+//
+// adds a carrier and answers, once it is up, {"ok":true,"address":...,
+// "public":...}.
+//
+//	{"rotate": true}
+//
+// replaces the listener's pre-shared key and answers with the new address.
 //
 // Accepting: each stream a peer opens is connected to the SDK's forward
 // socket and spliced, unchanged.
@@ -161,16 +170,20 @@ func Run(ctx context.Context, cfg Config, stdin io.Reader, stdout io.Writer) err
 	}
 }
 
-type dialRequest struct {
-	Dial []string `json:"dial"`
-	Key  string   `json:"key,omitempty"`
+type request struct {
+	Dial   []string `json:"dial,omitempty"`
+	Key    string   `json:"key,omitempty"`
+	Listen string   `json:"listen,omitempty"`
+	Rotate bool     `json:"rotate,omitempty"`
 }
 
 type dialReply struct {
-	OK    bool   `json:"ok"`
-	Key   string `json:"key,omitempty"`
-	Via   string `json:"via,omitempty"`
-	Error string `json:"error,omitempty"`
+	OK      bool   `json:"ok"`
+	Key     string `json:"key,omitempty"`
+	Via     string `json:"via,omitempty"`
+	Address string `json:"address,omitempty"`
+	Public  string `json:"public,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 func dial(ctx context.Context, cfg Config, tu *tunnel.Tunnel, c net.Conn) {
@@ -187,9 +200,21 @@ func dial(ctx context.Context, cfg Config, tu *tunnel.Tunnel, c net.Conn) {
 		_, err := c.Write(append(b, '\n'))
 		return err
 	}
-	var req dialRequest
+	var req request
 	if err := json.Unmarshal(line, &req); err != nil {
 		reply(dialReply{Error: "bad request: " + err.Error()})
+		return
+	}
+	switch {
+	case req.Listen != "":
+		reply(listen(ctx, tu, req.Listen))
+		return
+	case req.Rotate:
+		if err := tu.RotatePSK(); err != nil {
+			reply(dialReply{Error: err.Error()})
+			return
+		}
+		reply(addressReply(tu))
 		return
 	}
 	var addrs []tunnel.Address
@@ -225,6 +250,38 @@ func dial(ctx context.Context, cfg Config, tu *tunnel.Tunnel, c net.Conn) {
 		return
 	}
 	splice(cfg, &bufConn{Conn: c, r: br}, s)
+}
+
+func addressReply(tu *tunnel.Tunnel) dialReply {
+	r := dialReply{OK: true}
+	if a := tu.Address(); len(a.Endpoints) > 0 {
+		r.Address, r.Public = a.String(), a.Public().String()
+	}
+	return r
+}
+
+// listen adds a carrier and waits, up to 90 seconds, for it to come up.
+func listen(ctx context.Context, tu *tunnel.Tunnel, spec string) dialReply {
+	if err := tu.Listen(spec); err != nil {
+		return dialReply{Error: err.Error()}
+	}
+	deadline := time.Now().Add(90 * time.Second)
+	for {
+		e, pending := tu.Pending()[spec]
+		switch {
+		case !pending:
+			return addressReply(tu)
+		case e != "":
+			return dialReply{Error: spec + ": " + e}
+		case time.Now().After(deadline):
+			return dialReply{Error: spec + ": not up after 90s"}
+		}
+		select {
+		case <-ctx.Done():
+			return dialReply{Error: "shutting down"}
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func forward(cfg Config, s *tunnel.Stream) {
