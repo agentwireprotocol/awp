@@ -172,7 +172,7 @@ hook ─┘   (local control API)       │                       └─ unix:/p
 ```
 
 - **Daemon** (`internal/daemon`). One per home. Any command starts it on demand. It serves a newline-delimited JSON API on a `0600` Unix socket.
-- **Engine** (`internal/node`). It implements the spec:
+- **Engine** (`node`). It implements the spec:
   - the hello/auth handshake over the exact hello bytes
   - resume, the outbox and acks
   - dedup by id
@@ -181,10 +181,10 @@ hook ─┘   (local control API)       │                       └─ unix:/p
   - ping/pong liveness (two missed pongs mean a dead connection)
   - bye, and the error codes with their close rules
   - reconnection with exponential backoff capped at 60s, no give-up, for as long as there are unacked messages or open threads
-- **Store** (`internal/store`). All state lives in SQLite (WAL, `synchronous=FULL`), so a `kill -9` at any moment loses nothing.
+- **Store** (`store`). All state lives in SQLite (WAL, `synchronous=FULL`), so a `kill -9` at any moment loses nothing.
   - Received messages are acked only after they are committed.
   - Ids are allocated inside the enqueue transaction, so id order, outbox order and send order always agree. Resume depends on that.
-- **Tailcat** (`internal/transport`). The listener's WireGuard key, pre-shared key and DERP region are saved in `~/.awp/tailcat.json`. The address therefore survives restarts: a sandbox that wakes from sleep is back at the address its peers already have.
+- **Tailcat** (`transport`). The listener's WireGuard key, pre-shared key and DERP region are saved in `~/.awp/tailcat.json`. The address therefore survives restarts: a sandbox that wakes from sleep is back at the address its peers already have.
 - **Wire** (`wire/`). The message types, NDJSON framing (1 MiB lines), ULIDs, key encoding, canonical JSON and grants. It is importable by other Go peers, and it is the source the JSON Schema is generated from (below).
 
 ### Extensions beyond draft 1
@@ -215,6 +215,16 @@ awp conform --scenario handshake --trace tcp:127.0.0.1:7000
 The scenarios cover the handshake (hello without waiting, auth signatures, resume), the closing errors (`version`, `auth`, `bad_frame`, `too_large`) and that the connection closes after them, ping/pong, acks for `msg` and `state` with the right `re` and `th`, dedup, unknown types and fields, non-closing errors, blobs in chunks, grants and bye. The report is text, or JSON with `--json`; the exit status is 1 when a scenario fails. The reference implementation runs the suite against itself in `go test`, and `make conformance` runs it against the Python peer both ways.
 
 Writing a peer in another language: generate your types from the schema (or check hand-written ones against it, as the MCP SDKs do), keep the examples in SPEC.md as test vectors (the grant in section 10.2 has a real signature), and run `awp conform` against your peer while you go.
+
+## SDKs
+
+Your own program can be a peer. Each SDK has the whole protocol inside (resume with an outbox on disk, acks, dedup, blobs, grants, reconnection) and runs the conformance suite in its own tests:
+
+- [Go](https://github.com/agentwireprotocol/go-sdk): `github.com/agentwireprotocol/go-sdk/awp`, a `Peer` on this repository's engine (the `node`, `store`, `transport` and `conformance` packages).
+- [Python](https://github.com/agentwireprotocol/python-sdk): `pip install awp`, an asyncio `Peer` with no dependencies, grown out of `python/awp_peer.py`.
+- [TypeScript](https://github.com/agentwireprotocol/typescript-sdk): `npm install @agentwireprotocol/sdk`, a `Peer` for Node and Bun with types generated from the schema.
+
+The docs have a section for each: https://docs.agentwireprotocol.com/go, /python, /typescript.
 
 ## Security
 

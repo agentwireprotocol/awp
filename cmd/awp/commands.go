@@ -19,9 +19,9 @@ import (
 	"github.com/agentwireprotocol/awp/internal/daemon"
 	"github.com/agentwireprotocol/awp/internal/harness"
 	"github.com/agentwireprotocol/awp/internal/mcp"
-	"github.com/agentwireprotocol/awp/internal/store"
-	"github.com/agentwireprotocol/awp/internal/transport"
 	"github.com/agentwireprotocol/awp/internal/version"
+	"github.com/agentwireprotocol/awp/store"
+	"github.com/agentwireprotocol/awp/transport"
 	"github.com/agentwireprotocol/awp/wire"
 )
 

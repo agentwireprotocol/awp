@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/agentwireprotocol/awp/internal/api"
-	"github.com/agentwireprotocol/awp/internal/node"
+	"github.com/agentwireprotocol/awp/node"
 	"github.com/agentwireprotocol/awp/wire"
 )
 

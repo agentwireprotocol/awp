@@ -18,7 +18,7 @@ import (
 
 	"github.com/agentwireprotocol/awp/internal/api"
 	"github.com/agentwireprotocol/awp/internal/control"
-	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/store"
 	"github.com/agentwireprotocol/awp/wire"
 )
 

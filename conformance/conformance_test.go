@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentwireprotocol/awp/internal/conformance"
-	"github.com/agentwireprotocol/awp/internal/node"
+	"github.com/agentwireprotocol/awp/conformance"
+	"github.com/agentwireprotocol/awp/node"
 )
 
 func startNode(t *testing.T) *node.Node {

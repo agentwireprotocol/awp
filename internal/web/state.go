@@ -12,7 +12,7 @@ import (
 
 	"github.com/agentwireprotocol/awp/internal/api"
 	"github.com/agentwireprotocol/awp/internal/harness"
-	"github.com/agentwireprotocol/awp/internal/store"
+	"github.com/agentwireprotocol/awp/store"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
