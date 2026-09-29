@@ -65,6 +65,8 @@ func init() {
 		{"model", "[<model>]", "show or set the model this agent runs on (shared with the network)", cmdModel},
 		{"share", "[<host>...]", "show or set the hosts this agent shares its conversations with", cmdShare},
 		{"private", "[<peer>] <thread>", "keep a thread out of conversation sharing", cmdPrivate},
+		{"conform", "[<address>]", "check a peer against the protocol: run the conformance scenarios and report", cmdConform},
+		{"schema", "", "print the protocol's JSON Schema", cmdSchema},
 		{"version", "", "print the version", cmdVersion},
 	}
 }

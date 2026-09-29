@@ -23,57 +23,89 @@ const (
 	PresenceMaxHops = 8
 )
 
-// PresenceMsg carries one signed presence document. Doc travels unchanged
-// from relay to relay; the envelope and Hops are per hop.
+// PresenceMsg is an extension: it carries one signed presence document,
+// gossiped to every peer that lists presence in its hello caps. Doc travels
+// unchanged from relay to relay; the envelope and Hops are per hop.
 type PresenceMsg struct {
 	Envelope
-	Doc  json.RawMessage `json:"doc"`
-	Hops int             `json:"hops"`
+	// Doc is the signed presence document (Presence), verbatim.
+	Doc json.RawMessage `json:"doc"`
+	// Hops counts the relays the document has been through; it is not
+	// forwarded past PresenceMaxHops.
+	Hops int `json:"hops" jsonschema:"minimum=0"`
 }
 
 // Presence is what an agent says about itself. It is signed by Origin over
 // the canonical JSON of the document without "sig", like a grant.
 type Presence struct {
-	Origin  string   `json:"origin"`
-	Name    string   `json:"name,omitempty"`
-	About   string   `json:"about,omitempty"`
-	Version string   `json:"version,omitempty"`
-	Harness string   `json:"harness,omitempty"` // the agent harness: claude, codex, cursor, ...
-	Model   string   `json:"model,omitempty"`   // the model the agent runs on, as it reports it
-	Host    string   `json:"host,omitempty"`    // the hostname of the machine it runs on
-	Shares  []string `json:"shares,omitempty"`  // keys of the hosts it mirrors its conversations to
+	// Origin is the key of the agent the document describes and is signed by.
+	Origin string `json:"origin" jsonschema:"pattern=^ed25519:[A-Za-z0-9_-]{43}$"`
+	// Name is the agent's name, as in hello.
+	Name string `json:"name,omitempty"`
+	// About is the agent's about text, as in hello.
+	About string `json:"about,omitempty"`
+	// Version is the agent's implementation version.
+	Version string `json:"version,omitempty"`
+	// Harness is the agent harness: claude, codex, cursor, ...
+	Harness string `json:"harness,omitempty"`
+	// Model is the model the agent runs on, as it reports it.
+	Model string `json:"model,omitempty"`
+	// Host is the hostname of the machine the agent runs on.
+	Host string `json:"host,omitempty"`
+	// Shares lists the keys of the hosts the agent mirrors its
+	// conversations to.
+	Shares []string `json:"shares,omitempty"`
 	// Active is when the agent last did something through awp, to 30
-	// seconds; Waiting says it is blocked waiting for a message.
-	Active  string           `json:"active,omitempty"`
-	Waiting bool             `json:"waiting,omitempty"`
-	Seq     int64            `json:"seq"`
-	TS      string           `json:"ts"`
-	Peers   []PresencePeer   `json:"peers,omitempty"`
+	// seconds, RFC 3339.
+	Active string `json:"active,omitempty" jsonschema:"format=date-time"`
+	// Waiting says the agent is blocked waiting for a message.
+	Waiting bool `json:"waiting,omitempty"`
+	// Seq increases with every document the origin signs; a relay keeps the
+	// highest it has seen.
+	Seq int64 `json:"seq" jsonschema:"minimum=0"`
+	// TS is when the document was signed, RFC 3339.
+	TS string `json:"ts" jsonschema:"format=date-time"`
+	// Peers are the origin's peers.
+	Peers []PresencePeer `json:"peers,omitempty"`
+	// Threads are the origin's threads.
 	Threads []PresenceThread `json:"threads,omitempty"`
-	Outbox  int              `json:"outbox,omitempty"`
-	Unread  int              `json:"unread,omitempty"`
-	Sig     string           `json:"sig,omitempty"`
+	// Outbox counts the origin's queued, unacked messages.
+	Outbox int `json:"outbox,omitempty" jsonschema:"minimum=0"`
+	// Unread counts the messages the origin has not read.
+	Unread int `json:"unread,omitempty" jsonschema:"minimum=0"`
+	// Sig is the origin's signature, base64url.
+	Sig string `json:"sig,omitempty" jsonschema:"pattern=^[A-Za-z0-9_-]+$"`
 }
 
 // PresencePeer is one of the origin's peers.
 type PresencePeer struct {
-	Key  string `json:"key"`
+	// Key is the peer's key.
+	Key string `json:"key" jsonschema:"pattern=^ed25519:[A-Za-z0-9_-]{43}$"`
+	// Name is the peer's name.
 	Name string `json:"name,omitempty"`
-	Up   bool   `json:"up,omitempty"` // connected right now
-	// RTT is the connection's last round trip time in milliseconds, an
-	// extension to show latency across the network; 0 if unknown.
-	RTT int64 `json:"rtt,omitempty"`
+	// Up says the peer is connected right now.
+	Up bool `json:"up,omitempty"`
+	// RTT is the connection's last round trip time in milliseconds, to show
+	// latency across the network; 0 if unknown.
+	RTT int64 `json:"rtt,omitempty" jsonschema:"minimum=0"`
 }
 
 // PresenceThread is one of the origin's threads.
 type PresenceThread struct {
-	Th      string `json:"th"`
-	Peer    string `json:"peer"`
+	// Th is the thread id.
+	Th string `json:"th"`
+	// Peer is the key of the other party.
+	Peer string `json:"peer" jsonschema:"pattern=^ed25519:[A-Za-z0-9_-]{43}$"`
+	// Subject is the thread's subject.
 	Subject string `json:"subject,omitempty"`
-	Mine    string `json:"mine,omitempty"`   // the origin's state
-	Theirs  string `json:"theirs,omitempty"` // the peer's state, as the origin last heard it
-	Updated string `json:"updated,omitempty"`
-	Unread  int    `json:"unread,omitempty"`
+	// Mine is the origin's state in the thread.
+	Mine string `json:"mine,omitempty"`
+	// Theirs is the peer's state, as the origin last heard it.
+	Theirs string `json:"theirs,omitempty"`
+	// Updated is when the thread last changed, RFC 3339.
+	Updated string `json:"updated,omitempty" jsonschema:"format=date-time"`
+	// Unread counts the thread's messages the origin has not read.
+	Unread int `json:"unread,omitempty" jsonschema:"minimum=0"`
 }
 
 // Time parses the document's timestamp.
