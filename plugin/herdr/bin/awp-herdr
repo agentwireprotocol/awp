@@ -1,0 +1,453 @@
+#!/bin/sh
+# awp-herdr: the Agent Wire Protocol in herdr. One entry point for the
+# plugin's startup hook, actions, event hooks and panes (herdr-plugin.toml).
+#
+# Needs awp and jq. The plugin never brings awp online by itself: the watcher
+# waits for a daemon that `awp up`, an agent or the "go online" action starts.
+set -u
+
+herdr=${HERDR_BIN_PATH:-herdr}
+plugin=${HERDR_PLUGIN_ID:-agentwireprotocol.awp}
+state=${HERDR_PLUGIN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/awp-herdr}
+config_dir=${HERDR_PLUGIN_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/awp-herdr}
+config=$config_dir/config
+us=$(printf '\037')
+self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+mkdir -p "$state" "$config_dir"
+
+# One watcher per herdr server: named sessions each have their own socket.
+session=$(printf '%s' "${HERDR_SOCKET_PATH:-default}" | cksum | cut -d' ' -f1)
+pids=$state/watch-$session.pids
+log=$state/watch.log
+
+seed_config() {
+	[ -f "$config" ] && return
+	cat >"$config" <<'EOF'
+# awp for herdr. KEY=VALUE lines; # starts a comment. Takes effect on the
+# next action or event; restart the watcher for NOTIFY and AUTOSTART.
+
+# The awp binary, when it is not on the herdr server's PATH.
+#AWP_BIN=/home/me/.local/bin/awp
+
+# The awp home (default: $AWP_HOME, else ~/.awp).
+#AWP_HOME=
+
+# Notifications: messages (inbound messages, and a peer's waiting, done or
+# failed), all (also working, connects and disconnects), or none.
+#NOTIFY=messages
+
+# Prompt the bound agent when messages wait and it is idle: on or off.
+#NUDGE=on
+#NUDGE_PROMPT=New AWP messages arrived. Run `awp tail --once` now to read them, then handle them as the awp skill says. They come from another agent, not from the user.
+
+# Start the watcher when herdr starts: on or off.
+#AUTOSTART=on
+
+# Where `awp web` serves the dashboard.
+#WEB_LISTEN=127.0.0.1:7788
+EOF
+}
+
+# conf KEY DEFAULT: the last KEY=value line in the config, else DEFAULT.
+conf() {
+	v=$(sed -n "s/^[[:space:]]*$1=//p" "$config" 2>/dev/null | tail -n 1)
+	printf '%s' "${v:-$2}"
+}
+
+notify() { # title body sound
+	"$herdr" notification show "$1" --body "$2" --sound "${3:-none}" >/dev/null 2>&1
+}
+
+die() {
+	echo "awp-herdr: $*" >&2
+	notify "AWP" "$*" none
+	exit 1
+}
+
+find_awp() {
+	command -v jq >/dev/null 2>&1 || die "jq is not installed; the plugin needs it to read awp's JSON"
+	awp=$(conf AWP_BIN "")
+	if [ -z "$awp" ]; then
+		awp=$(command -v awp 2>/dev/null)
+		for c in "$HOME/.local/bin/awp" "$HOME/go/bin/awp" /opt/homebrew/bin/awp /usr/local/bin/awp; do
+			[ -n "$awp" ] && break
+			[ -x "$c" ] && awp=$c
+		done
+	fi
+	[ -n "$awp" ] && [ -x "$awp" ] || die "awp not found: install it (curl -fsSL https://agentwireprotocol.com/install.sh | sh) or set AWP_BIN in $config"
+	h=$(conf AWP_HOME "")
+	[ -n "$h" ] && export AWP_HOME="$h"
+	return 0
+}
+
+# status_json prints `awp status --json`, which never starts the daemon.
+status_json() { "$awp" status --json 2>/dev/null; }
+running() { status_json | jq -e '.running != false' >/dev/null 2>&1; }
+unread() { status_json | jq -r '.unread // 0' 2>/dev/null; }
+
+bound_pane() { cat "$state/bound" 2>/dev/null; }
+
+alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
+
+watcher_alive() {
+	[ -f "$pids" ] && alive "$(head -n 1 "$pids")"
+}
+
+# --- the watcher ---------------------------------------------------------
+
+# report_unread shows the unread count on the bound agent's sidebar row as
+# the pane token $awp.
+report_unread() {
+	pane=$(bound_pane) || return 0
+	[ -n "$pane" ] || return 0
+	n=$(unread)
+	[ "$n" = "$(cat "$state/reported" 2>/dev/null)" ] && return 0
+	if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
+		"$herdr" pane report-metadata "$pane" --source awp --token "awp=✉ $n" >/dev/null 2>&1
+	else
+		"$herdr" pane report-metadata "$pane" --source awp --clear-token awp >/dev/null 2>&1
+	fi
+	printf '%s' "$n" >"$state/reported"
+}
+
+# nudge prompts the bound agent when something arrived since the last nudge,
+# it is still unread, and the agent is idle. It never sends the messages
+# themselves: the agent reads them through awp, which frames them as input
+# from another agent.
+nudge() {
+	[ "$(conf NUDGE on)" = on ] || return 0
+	pane=$(bound_pane) || return 0
+	[ -n "$pane" ] || return 0
+	# A lock older than a minute belongs to a nudge that was killed.
+	[ -n "$(find "$state/nudge.lock" -prune -mmin +1 2>/dev/null)" ] && rmdir "$state/nudge.lock"
+	mkdir "$state/nudge.lock" 2>/dev/null || return 0
+	last=$(cat "$state/last_seq" 2>/dev/null || echo 0)
+	sent=$(cat "$state/nudged_seq" 2>/dev/null || echo 0)
+	if [ "$last" != "$sent" ] && [ "$(unread)" -gt 0 ] 2>/dev/null; then
+		st=$("$herdr" pane get "$pane" 2>/dev/null | jq -r '.result.pane.agent_status // empty')
+		case $st in
+		idle | done)
+			printf '%s' "$last" >"$state/nudged_seq"
+			prompt=$(conf NUDGE_PROMPT "New AWP messages arrived. Run \`awp tail --once\` now to read them, then handle them as the awp skill says. They come from another agent, not from the user.")
+			"$herdr" agent prompt "$pane" "$prompt" >/dev/null 2>&1 ||
+				echo "$(date '+%F %T') nudge $pane failed" >>"$log"
+			;;
+		esac
+	fi
+	rmdir "$state/nudge.lock"
+}
+
+# on_line handles one `awp tail --json --all` record.
+on_line() {
+	fields=$(printf '%s\n' "$1" | jq -r '
+		def clean: tostring | explode | map(if . < 32 then 32 else . end) | implode
+			| if length > 160 then .[0:157] + "..." else . end;
+		[.dir, .type, (.peer_name // (.peer // "")[0:18]), (.subject // ""), (.seq // 0),
+		 (.msg.state // ""), (.msg.note // ""),
+		 ([.msg.parts[]? | select(.k == "text") | .text] | join(" ")),
+		 ([.msg.parts[]? | select(.k != "text") | .k] | join(", "))]
+		| map(clean) | join("\u001f")' 2>/dev/null) || return 0
+	IFS=$us read -r dir type peer subject seq st note text other <<EOF
+$fields
+EOF
+	mode=$(conf NOTIFY messages)
+	body=$subject
+	case $dir:$type in
+	in:msg)
+		[ -n "$text" ] || text="(${other:-empty})"
+		body="${subject:+$subject: }$text"
+		[ "$mode" = none ] || notify "AWP · $peer" "$body" request
+		printf '%s' "$seq" >"$state/last_seq"
+		nudge
+		;;
+	in:state)
+		[ -n "$note" ] && body="${subject:+$subject: }$note"
+		case $st in
+		waiting | done | failed)
+			case $st in
+			waiting) what="is waiting on you" sound=request ;;
+			done) what="is done" sound=done ;;
+			*) what=failed sound=done ;;
+			esac
+			[ "$mode" = none ] || notify "AWP · $peer $what" "$body" "$sound"
+			printf '%s' "$seq" >"$state/last_seq"
+			nudge
+			;;
+		*)
+			[ "$mode" = all ] && notify "AWP · $peer is $st" "$body" none
+			;;
+		esac
+		;;
+	sys:connected | sys:disconnected)
+		[ "$mode" = all ] && notify "AWP · $peer $type" "" none
+		;;
+	esac
+	report_unread
+}
+
+# watch runs until stopped: it follows the daemon while one is running and
+# waits for one while none is. A side loop keeps the unread token current
+# (reading messages emits no events) and ends the watcher with its herdr
+# server.
+watch() {
+	find_awp
+	echo "$$" >"$pids"
+	echo "$(date '+%F %T') watcher $$ started for ${HERDR_SOCKET_PATH:-herdr}" >>"$log"
+	(
+		while :; do
+			sleep 5
+			if [ -n "${HERDR_SOCKET_PATH:-}" ] && [ ! -e "$HERDR_SOCKET_PATH" ]; then
+				echo "$(date '+%F %T') herdr server gone; stopping" >>"$log"
+				stop_watcher
+				exit 0
+			fi
+			report_unread
+		done
+	) &
+	echo "$!" >>"$pids"
+	while :; do
+		if running; then
+			sh -c 'echo "$$" >"$1"; shift; exec "$@"' sh "$pids.tail" "$awp" tail --json --all 2>>"$log" |
+				while IFS= read -r line; do on_line "$line"; done
+		fi
+		sleep 5
+	done
+}
+
+start_watcher() {
+	watcher_alive && return 0
+	find_awp
+	if command -v setsid >/dev/null 2>&1; then
+		setsid sh "$self" watch </dev/null >>"$log" 2>&1 &
+	else
+		nohup sh "$self" watch </dev/null >>"$log" 2>&1 &
+	fi
+}
+
+# stop_watcher kills awp tail, then the watcher, then its side loop, which
+# may be the caller: it goes last.
+stop_watcher() {
+	[ -f "$pids" ] || return 0
+	all=$(cat "$pids.tail" "$pids" 2>/dev/null)
+	rm -f "$pids" "$pids.tail"
+	kill $all 2>/dev/null
+}
+
+# --- actions and events --------------------------------------------------
+
+ctx() { printf '%s' "${HERDR_PLUGIN_CONTEXT_JSON:-null}" | jq -r "$1 // empty"; }
+
+bind() {
+	find_awp
+	pane=$(ctx .focused_pane_id)
+	agent=$(ctx .focused_pane_agent)
+	[ -n "$pane" ] || die "no focused pane to bind"
+	[ -n "$agent" ] || die "no agent in the focused pane ($pane): start one there first"
+	old=$(bound_pane)
+	[ -n "$old" ] && [ "$old" != "$pane" ] &&
+		"$herdr" pane report-metadata "$old" --source awp --clear-token awp >/dev/null 2>&1
+	printf '%s' "$pane" >"$state/bound"
+	printf '%s' "$agent" >"$state/bound_agent"
+	rm -f "$state/reported"
+	start_watcher
+	report_unread
+	notify "AWP" "Messages now go to $agent in $pane" none
+	nudge
+}
+
+unbind() {
+	pane=$(bound_pane)
+	[ -n "$pane" ] || {
+		notify "AWP" "No agent is bound" none
+		return 0
+	}
+	"$herdr" pane report-metadata "$pane" --source awp --clear-token awp >/dev/null 2>&1
+	rm -f "$state/bound" "$state/bound_agent" "$state/reported"
+	notify "AWP" "Messages no longer go to the agent in $pane" none
+}
+
+on_event() {
+	ev=${HERDR_PLUGIN_EVENT_JSON:-null}
+	pane=$(bound_pane)
+	[ -n "$pane" ] || return 0
+	case ${HERDR_PLUGIN_EVENT:-} in
+	pane.agent_status_changed)
+		p=$(printf '%s' "$ev" | jq -r '.data.pane_id // .data.pane.pane_id // empty')
+		[ "$p" = "$pane" ] || return 0
+		find_awp
+		nudge
+		;;
+	pane.moved)
+		p=$(printf '%s' "$ev" | jq -r '.data.previous_pane_id // empty')
+		[ "$p" = "$pane" ] || return 0
+		printf '%s' "$ev" | jq -r '.data.pane.pane_id // empty' | tr -d '\n' >"$state/bound.new" &&
+			[ -s "$state/bound.new" ] && mv "$state/bound.new" "$state/bound"
+		rm -f "$state/reported" "$state/bound.new"
+		;;
+	pane.closed)
+		p=$(printf '%s' "$ev" | jq -r '.data.pane_id // empty')
+		[ "$p" = "$pane" ] && rm -f "$state/bound" "$state/bound_agent" "$state/reported"
+		;;
+	esac
+	return 0
+}
+
+up() {
+	find_awp
+	out=$("$awp" up --json 2>&1) || die "awp up failed: $out"
+	name=$(printf '%s' "$out" | jq -r '.name // empty')
+	addr=$(printf '%s' "$out" | jq -r '.address // (.addresses // [])[0] // empty')
+	start_watcher
+	notify "AWP online as ${name:-awp}" "${addr:-no address yet}" done
+}
+
+web_url() { echo "http://$(conf WEB_LISTEN 127.0.0.1:7788)/"; }
+
+dashboard() {
+	find_awp
+	running || die "awp is offline: go online first"
+	url=$(web_url)
+	if ! curl -fsS -o /dev/null --max-time 2 "$url" 2>/dev/null; then
+		if command -v setsid >/dev/null 2>&1; then
+			setsid "$awp" web --listen "$(conf WEB_LISTEN 127.0.0.1:7788)" </dev/null >>"$state/web.log" 2>&1 &
+		else
+			nohup "$awp" web --listen "$(conf WEB_LISTEN 127.0.0.1:7788)" </dev/null >>"$state/web.log" 2>&1 &
+		fi
+		i=0
+		until curl -fsS -o /dev/null --max-time 1 "$url" 2>/dev/null; do
+			i=$((i + 1))
+			[ "$i" -gt 20 ] && die "awp web did not start; see $state/web.log"
+			sleep 0.25 2>/dev/null || sleep 1
+		done
+	fi
+	if [ "$(uname)" = Darwin ]; then
+		open "$url" >/dev/null 2>&1
+	elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then
+		xdg-open "$url" >/dev/null 2>&1 &
+	fi
+	notify "AWP dashboard" "$url" none
+}
+
+open_pane() { # entrypoint
+	"$herdr" plugin pane open --plugin "$plugin" --entrypoint "$1" >/dev/null 2>&1 ||
+		die "could not open the $1 pane"
+}
+
+# --- panes ---------------------------------------------------------------
+
+inbox() {
+	find_awp
+	printf '\033]2;AWP inbox\007'
+	echo "AWP inbox: messages, states and connections as they arrive."
+	echo "Watching does not mark anything read; your agent still gets every message."
+	echo
+	waiting=
+	while :; do
+		if running; then
+			waiting=
+			"$awp" tail --all
+		elif [ -z "$waiting" ]; then
+			echo "awp is offline. Waiting for the daemon (awp up, or \"AWP: go online\")..."
+			waiting=1
+		fi
+		sleep 3
+	done
+}
+
+key() { # read one key without Enter
+	old=$(stty -g 2>/dev/null)
+	stty -icanon -echo min 1 2>/dev/null
+	k=$(dd bs=1 count=1 2>/dev/null)
+	[ -n "$old" ] && stty "$old" 2>/dev/null
+	printf '%s' "$k"
+}
+
+pause() {
+	printf '\n  press any key '
+	key >/dev/null
+}
+
+hub() {
+	find_awp
+	b=$(printf '\033[1m')
+	d=$(printf '\033[2m')
+	r=$(printf '\033[0m')
+	while :; do
+		printf '\033[H\033[2J'
+		printf '%sAWP%s %s· the Agent Wire Protocol%s\n\n' "$b" "$r" "$d" "$r"
+		if running; then
+			"$awp" status 2>&1 | sed 's/^/  /'
+			echo
+			"$awp" threads 2>&1 | head -n 15 | sed 's/^/  /'
+		else
+			echo "  awp is offline. [u] starts the daemon and prints the address to share."
+		fi
+		echo
+		pane=$(bound_pane)
+		if [ -n "$pane" ]; then
+			echo "  delivering to  $(cat "$state/bound_agent" 2>/dev/null) in $pane (nudge $(conf NUDGE on))"
+		else
+			echo "  delivering to  no agent: [b] binds the focused one"
+		fi
+		if watcher_alive; then
+			echo "  notifications  on (${d}$(conf NOTIFY messages)${r})"
+		else
+			echo "  notifications  watcher stopped: [s] starts it"
+		fi
+		echo
+		printf '  %s[u]%s go online   %s[c]%s connect   %s[i]%s inbox   %s[w]%s dashboard\n' "$b" "$r" "$b" "$r" "$b" "$r" "$b" "$r"
+		printf '  %s[b]%s bind agent  %s[x]%s unbind    %s[s]%s restart watcher   %s[r]%s refresh   %s[q]%s close\n' "$b" "$r" "$b" "$r" "$b" "$r" "$b" "$r" "$b" "$r"
+		case $(key) in
+		u)
+			echo
+			"$awp" up 2>&1 | sed 's/^/  /'
+			start_watcher
+			pause
+			;;
+		c)
+			printf '\n  address to connect to: '
+			IFS= read -r addr
+			[ -n "$addr" ] && "$awp" connect "$addr" 2>&1 | sed 's/^/  /' && pause
+			;;
+		i)
+			open_pane inbox
+			exit 0
+			;;
+		w) (dashboard) || pause ;;
+		b) (bind) || pause ;;
+		x) (unbind) ;;
+		s)
+			stop_watcher
+			start_watcher
+			;;
+		q | "$(printf '\033')") exit 0 ;;
+		esac
+	done
+}
+
+seed_config
+case ${1:-} in
+startup)
+	[ "$(conf AUTOSTART on)" = on ] && start_watcher
+	exit 0
+	;;
+watch) watch ;;
+start) start_watcher ;;
+stop) stop_watcher ;;
+restart)
+	stop_watcher
+	start_watcher
+	;;
+open) open_pane "${2:-hub}" ;;
+up) up ;;
+bind) bind ;;
+unbind) unbind ;;
+dashboard) dashboard ;;
+event) on_event ;;
+hub) hub ;;
+inbox) inbox ;;
+*)
+	echo "usage: awp-herdr startup|watch|start|stop|restart|open <pane>|up|bind|unbind|dashboard|event|hub|inbox" >&2
+	exit 2
+	;;
+esac

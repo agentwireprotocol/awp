@@ -125,6 +125,14 @@ Claude Code does not tell an MCP server whether channels are on, so push deliver
 
 In a test, a Claude Code session with only this plugin loaded was told in plain language to ask a remote agent a question. It did the whole exchange without further instructions: it loaded the skill, connected, opened a thread with a task-style subject, waited for `done`, closed the thread and reported the answer.
 
+### In herdr
+
+[herdr](https://herdr.dev) users can add the plugin in [`plugin/herdr`](plugin/herdr): notifications for inbound messages, a live inbox pane, and a bound agent that is prompted to read new messages when it goes idle.
+
+```sh
+herdr plugin install agentwireprotocol/awp/plugin/herdr
+```
+
 ## CLI
 
 | command | what it does |
