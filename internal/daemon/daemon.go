@@ -17,10 +17,10 @@ import (
 
 	"github.com/agentwireprotocol/awp/internal/api"
 	"github.com/agentwireprotocol/awp/internal/control"
+	"github.com/agentwireprotocol/awp/internal/version"
 	"github.com/agentwireprotocol/awp/node"
 	"github.com/agentwireprotocol/awp/store"
 	"github.com/agentwireprotocol/awp/transport"
-	"github.com/agentwireprotocol/awp/internal/version"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
