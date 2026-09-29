@@ -185,7 +185,7 @@ hook ─┘   (local control API)       │                       └─ unix:/p
   - Received messages are acked only after they are committed.
   - Ids are allocated inside the enqueue transaction, so id order, outbox order and send order always agree. Resume depends on that.
 - **Tailcat** (`internal/transport`). The listener's WireGuard key, pre-shared key and DERP region are saved in `~/.awp/tailcat.json`. The address therefore survives restarts: a sandbox that wakes from sleep is back at the address its peers already have.
-- **Wire** (`wire/`). The message types, NDJSON framing (1 MiB lines), ULIDs, key encoding, canonical JSON and grants. It is importable by other Go peers.
+- **Wire** (`wire/`). The message types, NDJSON framing (1 MiB lines), ULIDs, key encoding, canonical JSON and grants. It is importable by other Go peers, and it is the source the JSON Schema is generated from (below).
 
 ### Extensions beyond draft 1
 
@@ -196,6 +196,25 @@ Unknown fields are ignored (section 5), so all of these are compatible with peer
 - `chunk.th`: chunks carry their thread, so resume can replay them. Chunks are sent before the msg that references them.
 - `err ref`: `blob_refused` names the refused blob.
 - `presence`: an opt-in, signed summary of what an agent is doing: its peers, and its threads' subjects and states. It is gossiped across the network, so `awp web` on any connected host can show every agent. It is sent only to peers that list `presence` in their hello `caps`.
+
+## Schema and conformance
+
+The protocol has no OpenAPI description, since it is not HTTP. It has the equivalent for a line protocol:
+
+- **A JSON Schema** (draft 2020-12) for every message, at [`schema/v0/awp.schema.json`](schema/v0/awp.schema.json) and served at https://agentwireprotocol.com/schema/v0/awp.schema.json. It is generated from the `wire` package by `make schema` (`go generate ./wire`), together with the [schema reference page](schema/v0/schema.mdx) of the docs site, so the reference implementation's types are the source of truth and a test fails when the files are stale. Every JSON example in [SPEC.md](SPEC.md) validates against it, and so does one of every message the Go peer encodes. `awp schema` prints it.
+- **A conformance runner**, `awp conform`. It is a peer of its own with a key of its own: it connects to the peer under test once per scenario, drives each exchange, checks every line it receives against the schema, and reports.
+
+```sh
+awp conform tcp:127.0.0.1:7000            # the peer listens; every scenario, each on its own connection
+awp conform --listen tcp:127.0.0.1:0 \
+  --run 'my-peer connect {addr}'          # the peer connects to the runner; the scenarios that share a connection
+awp conform --list                        # the scenarios, with the spec section each one checks
+awp conform --scenario handshake --trace tcp:127.0.0.1:7000
+```
+
+The scenarios cover the handshake (hello without waiting, auth signatures, resume), the closing errors (`version`, `auth`, `bad_frame`, `too_large`) and that the connection closes after them, ping/pong, acks for `msg` and `state` with the right `re` and `th`, dedup, unknown types and fields, non-closing errors, blobs in chunks, grants and bye. The report is text, or JSON with `--json`; the exit status is 1 when a scenario fails. The reference implementation runs the suite against itself in `go test`, and `make conformance` runs it against the Python peer both ways.
+
+Writing a peer in another language: generate your types from the schema (or check hand-written ones against it, as the MCP SDKs do), keep the examples in SPEC.md as test vectors (the grant in section 10.2 has a real signature), and run `awp conform` against your peer while you go.
 
 ## Security
 
@@ -211,7 +230,8 @@ Unknown fields are ignored (section 5), so all of these are compatible with peer
 ## Development
 
 ```sh
-make test      # go vet, go test -race, the Python peer's own tests, Go↔Python interop
+make test      # go vet, go test -race, the Python peer's own tests, Go↔Python interop, conformance
+make schema    # regenerate schema/v0/ from the wire package
 make build     # ./bin/awp
 make plugin    # plugin/awp/libexec/awp-{linux,darwin}-{amd64,arm64}
 make dist      # release artifacts in dist/
@@ -235,6 +255,7 @@ The test suite covers:
 - two-node integration: resume across repeated `kill -9`, byte-identical multi-chunk blobs, refused blobs, bad auth, version, bad frame, oversized lines, unknown fields, dead-peer detection, served `exec` and `fs:read` behind grants, introductions with attenuation and audience binding, bye and parking, reconnecting via `hello.addr`
 - the MCP server, including channel push
 - interop against the independent Python peer (`python/`), over TCP and Unix sockets, with `kill -9` on each side
+- the schema: the generated files are current, SPEC.md's examples and the Go peer's messages validate, and the conformance suite passes against the Go node in both modes and against the Python peer
 
 Not done yet:
 

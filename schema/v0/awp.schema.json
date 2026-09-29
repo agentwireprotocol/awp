@@ -1,0 +1,1234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentwireprotocol.com/schema/v0/awp.schema.json",
+  "$ref": "#/$defs/Message",
+  "$defs": {
+    "Ack": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "ack",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "th",
+        "re"
+      ],
+      "title": "ack",
+      "description": "Ack says the msg or state named by re is durably received (section 9.2). Acks drive outbox pruning and are not acked themselves."
+    },
+    "Auth": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "auth",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "sig": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "`sig` is the Ed25519 signature, base64url, over \"awp-auth-v0\" || 0x00 || my hello line || 0x00 || peer hello line, the lines as sent and received without the newline."
+        },
+        "grants": {
+          "items": {
+            "$ref": "#/$defs/Grant"
+          },
+          "type": "array",
+          "description": "`grants` are grant objects (section 10.2) the sender presents."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "sig"
+      ],
+      "title": "auth",
+      "description": "Auth proves possession of the key sent in hello (section 7.2)."
+    },
+    "BlobPart": {
+      "properties": {
+        "k": {
+          "type": "string",
+          "const": "blob",
+          "description": "`k` is the part kind: text, code, data or blob."
+        },
+        "ref": {
+          "type": "string",
+          "description": "`ref` names the blob a blob part refers to, as the chunks carry it."
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "`size` is a blob part's size in bytes, before encoding."
+        },
+        "name": {
+          "type": "string",
+          "description": "`name` is a blob part's file name."
+        },
+        "mime": {
+          "type": "string",
+          "description": "`mime` is the media type of a data or blob part."
+        }
+      },
+      "type": "object",
+      "required": [
+        "k",
+        "ref",
+        "size"
+      ],
+      "title": "blob part",
+      "description": "A blob sent in chunk messages before or after this message, named by ref."
+    },
+    "Bye": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "bye",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "reason": {
+          "type": "string",
+          "description": "`reason` says why, for the log."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts"
+      ],
+      "title": "bye",
+      "description": "Bye is a graceful close (section 9.6). After sending it a peer sends nothing else and closes after the other side's bye or after 5 seconds."
+    },
+    "Chunk": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "chunk",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "ref": {
+          "type": "string",
+          "description": "`ref` names the blob, as the sender chose it."
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "`n` is the chunk index, from 0."
+        },
+        "last": {
+          "type": "boolean",
+          "description": "`last` is true on the final chunk."
+        },
+        "data": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]*={0,2}$",
+          "description": "`data` is the chunk's bytes, standard base64 (B64Pattern; the tag syntax cannot carry the padding)."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "ref",
+        "n",
+        "last",
+        "data"
+      ],
+      "title": "chunk",
+      "description": "Chunk carries part of a blob (section 9.3). Chunks of one blob arrive in order; chunks of different blobs may interleave. A chunk carries th when the blob belongs to a thread, so that resume replays it like any other threaded message."
+    },
+    "CodePart": {
+      "properties": {
+        "k": {
+          "type": "string",
+          "const": "code",
+          "description": "`k` is the part kind: text, code, data or blob."
+        },
+        "text": {
+          "type": "string",
+          "description": "`text` is the text of a text or code part."
+        },
+        "lang": {
+          "type": "string",
+          "description": "`lang` names a code part's language, as a fenced block would."
+        }
+      },
+      "type": "object",
+      "required": [
+        "k",
+        "text"
+      ],
+      "title": "code part",
+      "description": "Fenced code without the fence; lang names the language."
+    },
+    "DataPart": {
+      "properties": {
+        "k": {
+          "type": "string",
+          "const": "data",
+          "description": "`k` is the part kind: text, code, data or blob."
+        },
+        "data": {
+          "description": "`data` is a data part's inline JSON."
+        },
+        "mime": {
+          "type": "string",
+          "description": "`mime` is the media type of a data or blob part."
+        }
+      },
+      "type": "object",
+      "required": [
+        "k",
+        "data"
+      ],
+      "title": "data part",
+      "description": "Inline JSON, with its MIME type. Requests (section 10.1) are data parts of a vnd.awp type."
+    },
+    "Envelope": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts"
+      ],
+      "description": "Envelope holds the fields every line carries (section 6). The type-specific fields sit beside them at the top level."
+    },
+    "Err": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "err",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "bad_frame",
+            "version",
+            "auth",
+            "unsupported",
+            "forbidden",
+            "blob_refused",
+            "too_large",
+            "internal"
+          ],
+          "description": "`code` is the error code."
+        },
+        "detail": {
+          "type": "string",
+          "description": "`detail` is human readable."
+        },
+        "ref": {
+          "type": "string",
+          "description": "`ref` names the blob a blob_refused is about."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "code"
+      ],
+      "title": "err",
+      "description": "Err reports a problem (section 9.7). Whether it closes the connection depends on the code: bad_frame, version, auth and too_large do, unsupported, forbidden, blob_refused and internal do not."
+    },
+    "Grant": {
+      "properties": {
+        "iss": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
+          "description": "`iss` is the granting key."
+        },
+        "sub": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
+          "description": "`sub` is the receiving key."
+        },
+        "caps": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "`caps` are the capability strings granted (section 10.1)."
+        },
+        "exp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`exp` is when the grant expires, RFC 3339."
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "`nonce` makes each grant distinct, base64url."
+        },
+        "sig": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "`sig` is the issuer's signature, base64url."
+        },
+        "aud": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
+          "description": "`aud` is an extension: when set, only the peer with this key should honor the grant. Introductions use it so that a grant meant for the introduced peer does not also give the recipient powers over the introducer. Peers that do not know the field ignore it, which can only make them honor less, never more, than the spec already says."
+        }
+      },
+      "type": "object",
+      "required": [
+        "iss",
+        "sub",
+        "caps",
+        "exp",
+        "nonce",
+        "sig"
+      ],
+      "description": "GrantObject is the wire form of a grant (section 10.2): a signed statement that sub may use caps until exp, honored by iss and by whoever trusts iss. sig is iss's Ed25519 signature over the canonical JSON of the object without sig: keys sorted, no whitespace, UTF-8."
+    },
+    "GrantMsg": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "grant",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "grant": {
+          "$ref": "#/$defs/Grant",
+          "description": "`grant` is the grant object (section 10.2)."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "grant"
+      ],
+      "title": "grant",
+      "description": "GrantMsg delivers a grant after the handshake (section 10.3)."
+    },
+    "Hello": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "hello",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "v": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "`v` is the protocol major version. A peer that sees a version it does not speak sends err version and closes."
+        },
+        "key": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
+          "description": "`key` is the long-term Ed25519 public key. Its bytes are the peer's identity."
+        },
+        "name": {
+          "type": "string",
+          "description": "`name` is how the peer calls itself, \"harness@host\" by convention."
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "`nonce` is 32 random bytes, base64url. The auth signature covers the whole hello line, nonce included."
+        },
+        "caps": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "`caps` lists the supported message families beyond the mandatory chat and resume: blob, grant, introduce, and any extension.",
+          "examples": [
+            [
+              "chat",
+              "blob",
+              "grant",
+              "introduce"
+            ]
+          ]
+        },
+        "about": {
+          "type": "string",
+          "description": "`about` is free text for the other agent's context. It is not authenticated until auth completes."
+        },
+        "addr": {
+          "type": "string",
+          "description": "`addr` is an extension: an address at which the sender can be reached, so that either side can reconnect (section 4.3). Peers that do not know it ignore it, as section 5 requires."
+        },
+        "shares": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "`shares` is an extension (mirror.go): the keys of the hosts this agent mirrors its conversations to, so the other party knows."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "v",
+        "key",
+        "nonce"
+      ],
+      "title": "hello",
+      "description": "Hello is the first line each side sends, at once, without waiting for the other (section 7.1)."
+    },
+    "IntroPeer": {
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
+          "description": "Key is the introduced peer's public key."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name is what the introduced peer calls itself."
+        },
+        "address": {
+          "type": "string",
+          "description": "Address is where the introduced peer listens, a hint: the key is the identity."
+        }
+      },
+      "type": "object",
+      "required": [
+        "key"
+      ],
+      "description": "IntroPeer identifies the introduced peer."
+    },
+    "Introduce": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "introduce",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "peer": {
+          "$ref": "#/$defs/IntroPeer",
+          "description": "`peer` is the introduced peer."
+        },
+        "grant": {
+          "$ref": "#/$defs/Grant",
+          "description": "`grant` is issued by the introducer to the recipient, for the introduced peer to honor."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "peer"
+      ],
+      "title": "introduce",
+      "description": "Introduce hands the recipient another peer's identity and address plus a grant issued by the introducer (section 10.4). The introduced peer honors the grant only if it trusts the introducer with introduce."
+    },
+    "Message": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Hello"
+        },
+        {
+          "$ref": "#/$defs/Auth"
+        },
+        {
+          "$ref": "#/$defs/Resume"
+        },
+        {
+          "$ref": "#/$defs/State"
+        },
+        {
+          "$ref": "#/$defs/Msg"
+        },
+        {
+          "$ref": "#/$defs/Ack"
+        },
+        {
+          "$ref": "#/$defs/Chunk"
+        },
+        {
+          "$ref": "#/$defs/Ping"
+        },
+        {
+          "$ref": "#/$defs/Pong"
+        },
+        {
+          "$ref": "#/$defs/Bye"
+        },
+        {
+          "$ref": "#/$defs/Err"
+        },
+        {
+          "$ref": "#/$defs/GrantMsg"
+        },
+        {
+          "$ref": "#/$defs/Introduce"
+        },
+        {
+          "$ref": "#/$defs/PresenceMsg"
+        },
+        {
+          "$ref": "#/$defs/Mirror"
+        },
+        {
+          "$ref": "#/$defs/Private"
+        }
+      ],
+      "description": "One line of a connection: a message of SPEC.md sections 7 to 10, or one of the extensions marked x-extension. A receiver ignores lines of a type it does not know, after checking the envelope."
+    },
+    "Mirror": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "mirror",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "of": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
+          "description": "`of` is the other party of the mirrored thread (the sender is one side)."
+        },
+        "of_name": {
+          "type": "string",
+          "description": "`of_name` is the other party's name."
+        },
+        "subject": {
+          "type": "string",
+          "description": "`subject` is the mirrored thread's subject."
+        },
+        "dir": {
+          "type": "string",
+          "enum": [
+            "out",
+            "in"
+          ],
+          "description": "`dir` says who wrote Line: \"out\" the sender, \"in\" the other party."
+        },
+        "line": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Msg"
+            },
+            {
+              "$ref": "#/$defs/State"
+            }
+          ],
+          "description": "`line` is the original msg or state line, verbatim. A msg's blob parts keep their name, type and size; the file itself is not mirrored."
+        },
+        "withdraw": {
+          "type": "boolean",
+          "description": "`withdraw` asks the receiver to delete everything it has of the thread th between the sender and Of."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "of",
+        "th"
+      ],
+      "title": "mirror",
+      "description": "Mirror is an extension: one mirrored line of a thread the sender is part of, or, with Withdraw, a request to forget a mirrored thread. Its th is the mirrored thread's.",
+      "x-extension": true
+    },
+    "Msg": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "msg",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "subject": {
+          "type": "string",
+          "description": "`subject` is the thread's title, meaningful on its first message."
+        },
+        "parts": {
+          "items": {
+            "$ref": "#/$defs/Part"
+          },
+          "type": "array",
+          "description": "`parts` are the message's pieces, in order."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "parts",
+        "th"
+      ],
+      "title": "msg",
+      "description": "Msg is one turn in a thread (section 9.1). The first msg with a new th creates the thread."
+    },
+    "Part": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TextPart"
+        },
+        {
+          "$ref": "#/$defs/CodePart"
+        },
+        {
+          "$ref": "#/$defs/DataPart"
+        },
+        {
+          "$ref": "#/$defs/BlobPart"
+        }
+      ],
+      "description": "Part is one piece of a message. Which fields are meaningful depends on K (PartKinds)."
+    },
+    "Ping": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "ping",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts"
+      ],
+      "title": "ping",
+      "description": "Ping is a liveness probe (section 9.4): sent when idle for 30 seconds by convention; two missed pongs mean the connection is dead."
+    },
+    "Pong": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "pong",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "re"
+      ],
+      "title": "pong",
+      "description": "Pong answers a ping; re names the ping."
+    },
+    "Presence": {
+      "properties": {
+        "origin": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
+          "description": "`origin` is the key of the agent the document describes and is signed by."
+        },
+        "name": {
+          "type": "string",
+          "description": "`name` is the agent's name, as in hello."
+        },
+        "about": {
+          "type": "string",
+          "description": "`about` is the agent's about text, as in hello."
+        },
+        "version": {
+          "type": "string",
+          "description": "`version` is the agent's implementation version."
+        },
+        "harness": {
+          "type": "string",
+          "description": "`harness` is the agent harness: claude, codex, cursor, ..."
+        },
+        "model": {
+          "type": "string",
+          "description": "`model` is the model the agent runs on, as it reports it."
+        },
+        "host": {
+          "type": "string",
+          "description": "`host` is the hostname of the machine the agent runs on."
+        },
+        "shares": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "`shares` lists the keys of the hosts the agent mirrors its conversations to."
+        },
+        "active": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`active` is when the agent last did something through awp, to 30 seconds, RFC 3339."
+        },
+        "waiting": {
+          "type": "boolean",
+          "description": "`waiting` says the agent is blocked waiting for a message."
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "`seq` increases with every document the origin signs; a relay keeps the highest it has seen."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is when the document was signed, RFC 3339."
+        },
+        "peers": {
+          "items": {
+            "$ref": "#/$defs/PresencePeer"
+          },
+          "type": "array",
+          "description": "`peers` are the origin's peers."
+        },
+        "threads": {
+          "items": {
+            "$ref": "#/$defs/PresenceThread"
+          },
+          "type": "array",
+          "description": "`threads` are the origin's threads."
+        },
+        "outbox": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "`outbox` counts the origin's queued, unacked messages."
+        },
+        "unread": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "`unread` counts the messages the origin has not read."
+        },
+        "sig": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "`sig` is the origin's signature, base64url."
+        }
+      },
+      "type": "object",
+      "required": [
+        "origin",
+        "seq",
+        "ts",
+        "sig"
+      ],
+      "description": "Presence is what an agent says about itself. It is signed by Origin over the canonical JSON of the document without \"sig\", like a grant."
+    },
+    "PresenceMsg": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "presence",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "doc": {
+          "$ref": "#/$defs/Presence",
+          "description": "`doc` is the signed presence document (Presence), verbatim."
+        },
+        "hops": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "`hops` counts the relays the document has been through; it is not forwarded past PresenceMaxHops."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "doc",
+        "hops"
+      ],
+      "title": "presence",
+      "description": "PresenceMsg is an extension: it carries one signed presence document, gossiped to every peer that lists presence in its hello caps. Doc travels unchanged from relay to relay; the envelope and Hops are per hop.",
+      "x-extension": true
+    },
+    "PresencePeer": {
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
+          "description": "Key is the peer's key."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name is the peer's name."
+        },
+        "up": {
+          "type": "boolean",
+          "description": "Up says the peer is connected right now."
+        },
+        "rtt": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "RTT is the connection's last round trip time in milliseconds, to show latency across the network; 0 if unknown."
+        }
+      },
+      "type": "object",
+      "required": [
+        "key"
+      ],
+      "description": "PresencePeer is one of the origin's peers."
+    },
+    "PresenceThread": {
+      "properties": {
+        "th": {
+          "type": "string",
+          "description": "Th is the thread id."
+        },
+        "peer": {
+          "type": "string",
+          "pattern": "^ed25519:[A-Za-z0-9_-]{43}$",
+          "description": "Peer is the key of the other party."
+        },
+        "subject": {
+          "type": "string",
+          "description": "Subject is the thread's subject."
+        },
+        "mine": {
+          "type": "string",
+          "description": "Mine is the origin's state in the thread."
+        },
+        "theirs": {
+          "type": "string",
+          "description": "Theirs is the peer's state, as the origin last heard it."
+        },
+        "updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Updated is when the thread last changed, RFC 3339."
+        },
+        "unread": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unread counts the thread's messages the origin has not read."
+        }
+      },
+      "type": "object",
+      "required": [
+        "th",
+        "peer"
+      ],
+      "description": "PresenceThread is one of the origin's threads."
+    },
+    "Private": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "private",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "th"
+      ],
+      "title": "private",
+      "description": "Private is an extension: it asks the receiver to keep the thread th out of what it shares with its hosts, and those hosts to forget it.",
+      "x-extension": true
+    },
+    "Resume": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "resume",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "seen": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "`seen` maps each thread id to the last message id the sender has durably received in it. Empty on a first connection."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "seen"
+      ],
+      "title": "resume",
+      "description": "Resume is sent by both sides after every handshake (section 9.5). The receiver replays its outbox messages the sender has not seen."
+    },
+    "State": {
+      "properties": {
+        "t": {
+          "type": "string",
+          "const": "state",
+          "description": "`t` is the message type."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`id` is unique per sender. A ULID or UUIDv7 is recommended, so that ids sort by time; resume compares ids as strings."
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "`ts` is an RFC 3339 UTC timestamp."
+        },
+        "th": {
+          "type": "string",
+          "description": "`th` is the thread id. Required for msg, state and ack."
+        },
+        "re": {
+          "type": "string",
+          "description": "`re` is the id of the message this one responds to."
+        },
+        "state": {
+          "type": "string",
+          "description": "`state` is the thread state: open, working, waiting, done, failed or closed by convention; peers may use others.",
+          "examples": [
+            "open",
+            "working",
+            "waiting",
+            "done",
+            "failed",
+            "closed"
+          ]
+        },
+        "note": {
+          "type": "string",
+          "description": "`note` says more, such as why a thread failed."
+        }
+      },
+      "type": "object",
+      "required": [
+        "t",
+        "id",
+        "ts",
+        "state",
+        "th"
+      ],
+      "title": "state",
+      "description": "State is the sender's view of a thread's soft state (section 8.1). The two sides can disagree."
+    },
+    "TextPart": {
+      "properties": {
+        "k": {
+          "type": "string",
+          "const": "text",
+          "description": "`k` is the part kind: text, code, data or blob."
+        },
+        "text": {
+          "type": "string",
+          "description": "`text` is the text of a text or code part."
+        }
+      },
+      "type": "object",
+      "required": [
+        "k",
+        "text"
+      ],
+      "title": "text part",
+      "description": "Text, markdown by convention."
+    }
+  },
+  "$comment": "Generated from the wire package of github.com/agentwireprotocol/awp by go generate ./wire. Do not edit by hand.",
+  "title": "Agent Wire Protocol v0",
+  "description": "The messages of the Agent Wire Protocol, one JSON object per line (SPEC.md). Every message is an envelope (t, id, ts, and th or re where they apply) with the fields of its type beside it."
+}

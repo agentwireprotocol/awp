@@ -3,7 +3,7 @@ PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 LDFLAGS   := -s -w
 PLUGIN    := plugin/awp
 
-.PHONY: build web test test-go test-python interop dist plugin plugin-local clean
+.PHONY: build web test test-go test-python interop conformance schema dist plugin plugin-local clean
 
 build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/awp ./cmd/awp
@@ -16,7 +16,7 @@ web:
 	find internal/web/dist -mindepth 1 ! -name README -exec rm -rf {} +
 	cp -R web/dist/. internal/web/dist/
 
-test: test-go test-python interop
+test: test-go test-python interop conformance
 
 test-go:
 	go vet ./...
@@ -27,6 +27,16 @@ test-python:
 
 interop: build
 	cd python && AWP_BIN=$(CURDIR)/bin/awp python3 -m unittest -v interop_test
+
+# The conformance suite (awp conform) against the Python peer, both ways.
+# The Go node runs it in its own tests (internal/conformance).
+conformance: build
+	AWP_BIN=$(CURDIR)/bin/awp scripts/conformance.sh
+
+# The JSON Schema and its reference page, schema/v0/, from the wire
+# package. A test fails when they are stale.
+schema:
+	go generate ./wire
 
 # Release artifacts in dist/: per-platform archives, the plugin bundle and
 # SHA256SUMS. Tagging vX.Y.Z runs the same script in CI and publishes them.

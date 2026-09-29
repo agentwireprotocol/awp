@@ -3,10 +3,14 @@ package wire
 import (
 	"bytes"
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"os/exec"
+	"reflect"
+	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -292,4 +296,89 @@ func TestErrCloses(t *testing.T) {
 			t.Errorf("%s should not close", c)
 		}
 	}
+}
+
+// TestPartKinds keeps PartKinds, which the schema is generated from, in
+// step with Part.MarshalJSON: a zero part of each kind carries exactly the
+// required fields, a full one the required and optional fields.
+func TestPartKinds(t *testing.T) {
+	keys := func(p Part) []string {
+		b, err := json.Marshal(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		var ks []string
+		for k := range m {
+			ks = append(ks, k)
+		}
+		sort.Strings(ks)
+		return ks
+	}
+	sorted := func(ss ...[]string) []string {
+		var out []string
+		for _, s := range ss {
+			out = append(out, s...)
+		}
+		sort.Strings(out)
+		return out
+	}
+	full := Part{Text: "t", Lang: "go", Data: json.RawMessage(`1`), Mime: "x/y", Ref: "r", Name: "n", Size: 1}
+	for _, k := range PartKinds() {
+		if got, want := keys(Part{K: k.K}), sorted([]string{"k"}, k.Required); !slices.Equal(got, want) {
+			t.Errorf("zero %s part has %v, PartKinds says %v", k.K, got, want)
+		}
+		p := full
+		p.K = k.K
+		if got, want := keys(p), sorted([]string{"k"}, k.Required, k.Optional); !slices.Equal(got, want) {
+			t.Errorf("full %s part has %v, PartKinds says %v", k.K, got, want)
+		}
+	}
+}
+
+// TestPatterns checks that what this package encodes matches the patterns
+// the schema states, and that every pattern tag in the wire types is one
+// of the named constants.
+func TestPatterns(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	for _, c := range []struct{ pattern, value string }{
+		{KeyPattern, FormatKey(pub)},
+		{B64URLPattern, Nonce(32)},
+		{B64URLPattern, SignAuth(priv, []byte("a"), []byte("b"))},
+		{B64Pattern, base64.StdEncoding.EncodeToString([]byte("hello, world"))},
+		{B64Pattern, ""},
+	} {
+		if !regexp.MustCompile(c.pattern).MatchString(c.value) {
+			t.Errorf("%q does not match %s", c.value, c.pattern)
+		}
+	}
+	known := map[string]bool{KeyPattern: true, B64URLPattern: true, B64Pattern: true}
+	seen := map[reflect.Type]bool{}
+	var walk func(rt reflect.Type)
+	walk = func(rt reflect.Type) {
+		for rt.Kind() == reflect.Pointer || rt.Kind() == reflect.Slice || rt.Kind() == reflect.Map {
+			rt = rt.Elem()
+		}
+		if rt.Kind() != reflect.Struct || seen[rt] {
+			return
+		}
+		seen[rt] = true
+		for i := 0; i < rt.NumField(); i++ {
+			f := rt.Field(i)
+			for _, tag := range strings.Split(f.Tag.Get("jsonschema"), ",") {
+				if p, ok := strings.CutPrefix(tag, "pattern="); ok && !known[p] {
+					t.Errorf("%s.%s: pattern %q is not one of the named patterns", rt.Name(), f.Name, p)
+				}
+			}
+			walk(f.Type)
+		}
+	}
+	for _, m := range Messages() {
+		walk(m.Type)
+	}
+	walk(reflect.TypeFor[GrantObject]())
+	walk(reflect.TypeFor[Presence]())
 }

@@ -4,6 +4,13 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 ## [Unreleased]
 
+### Added
+
+- A JSON Schema (draft 2020-12) for every message of the protocol, `schema/v0/awp.schema.json`, and its reference page for the docs site, `schema/v0/schema.mdx`. Both are generated from the `wire` package by `make schema` (`go generate ./wire`), so the reference implementation's types are the source of truth; a test fails when the files are stale. `awp schema` prints the schema. The `schema` Go package embeds it and validates lines, with unknown message types checked against the envelope only, as section 5 asks.
+- `awp conform`: a conformance runner. It is a peer with a key of its own that connects to the peer under test once per scenario (or listens for it with `--listen`, optionally starting it with `--run`), drives each exchange, checks every line against the schema, and reports, in text or `--json`, with exit status 1 on a failure. Fifteen scenarios cover the handshake, the closing errors and that the connection closes after them, ping/pong, acks, dedup, unknown types and fields, non-closing errors, blobs, grants and bye. `go test` runs it against the Go node in both modes; `make conformance` runs it against the Python peer.
+- The JSON examples in SPEC.md are now complete, with real ids, keys and signatures (the grant in section 10.2 verifies), and a test validates every one of them against the schema. Section 5 points at the schema and the runner.
+- `wire` names what the schema is generated from: `Messages()`, `PartKinds()`, `ErrCodes()`, `ThreadStates()`, `Extensions()`, the `GrantObject` wire form, and the `KeyPattern`, `B64URLPattern` and `B64Pattern` constants.
+
 ## [0.5.0] - 2026-09-28
 
 ### Renamed

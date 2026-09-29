@@ -100,6 +100,8 @@ Sleep specifically:
 - A line that does not parse as a JSON object is a protocol error. The receiver sends `err` with code `bad_frame` and closes.
 - Unknown top-level fields MUST be ignored. Unknown message types MUST be ignored, except that a receiver MAY reply `err` with code `unsupported` if the message carried an `id` and looked like a request.
 
+A JSON Schema (draft 2020-12) for every message in this document is published at https://agentwireprotocol.com/schema/v0/awp.schema.json and kept as `schema/v0/awp.schema.json` in the reference implementation's repository, generated from its `wire` package. The examples in this document validate against it. Where the schema and this text disagree, this text wins and the schema has a bug. `awp conform` checks a running peer against this document.
+
 ## 6. Envelope
 
 Every line is an object with these fields.
@@ -130,26 +132,26 @@ B → A  resume
 7.1 `hello`
 
 ```json
-{"t":"hello","id":"01J9...","ts":"2026-09-25T17:03:11Z",
+{"t":"hello","id":"01M32EQV4RGGFXSXWG585DG7NJ","ts":"2026-09-25T17:03:11Z",
  "v":0,
- "key":"ed25519:base64url(32 bytes)",
+ "key":"ed25519:4ypZnypm77nHtEjcuPHYf0KO6L3XClTwNG8t4d3u9iI",
  "name":"claude-code@sprite-7f3a",
- "nonce":"base64url(32 random bytes)",
+ "nonce":"WtpPNrVwr0mBFUoTcN3xO-p5OOehzfB8YLBQcI8sq_M",
  "caps":["chat","blob","grant"],
  "about":"Coding agent working on repo fly-apps/foo, branch kyle/refactor"}
 ```
 
 - `v` is the protocol major version. A peer that sees a `v` it does not speak sends `err` code `version` and closes.
-- `key` is the long-term public key. Its byte encoding is the peer identity.
+- `key` is the long-term public key, `ed25519:` followed by the 32 bytes in unpadded base64url. The bytes are the peer identity.
+- `nonce` is 32 random bytes, unpadded base64url.
 - `caps` lists supported message families. `chat` and resume are mandatory and not listed. Everything else is optional.
 - `about` is free text for the other agent's context. It is not authenticated until `auth` completes.
 
 7.2 `auth`
 
 ```json
-{"t":"auth","id":"01J9...","ts":"...",
- "sig":"base64url(ed25519 signature)",
- "grants":[ ...optional grant objects... ]}
+{"t":"auth","id":"01M32EQV60GMRYMJNYTFP5M317","ts":"2026-09-21T17:03:11.040Z",
+ "sig":"D8qSwFuDSKOkBWtR_v7GCJl7h4tZ8M_wbPh9QtOoqE-hWOR_eWAWLJDZ2KDQ8mzar5pl-kzmgVR7vDYGw1cxAQ"}
 ```
 
 `sig` is the Ed25519 signature over the byte string:
@@ -158,7 +160,7 @@ B → A  resume
 "awp-auth-v0" || 0x00 || my_hello_line || 0x00 || peer_hello_line
 ```
 
-where the hello lines are the exact bytes received or sent, without the trailing newline. Each side verifies the other's signature with the key from that side's `hello`. If verification fails, send `err` code `auth` and close.
+where the hello lines are the exact bytes received or sent, without the trailing newline. Each side verifies the other's signature with the key from that side's `hello`. If verification fails, send `err` code `auth` and close. `grants` is optional and carries grant objects (section 10.2) the sender presents.
 
 After both `auth` messages verify, the connection is established. Each peer now knows the other's key and self-described name and capabilities.
 
@@ -175,7 +177,7 @@ A thread is a conversation about one thing. Creating one is implicit: the first 
 Threads have a soft state used by convention, not enforced by the protocol.
 
 ```json
-{"t":"state","id":"...","ts":"...","th":"thr_9k2","state":"working","note":"running tests"}
+{"t":"state","id":"01M32ER010BPFVBDVF1PY1WEV7","ts":"2026-09-21T17:03:16.000Z","th":"thr_9k2","state":"working","note":"running tests"}
 ```
 
 Recommended state vocabulary. Peers MAY use others.
@@ -198,7 +200,7 @@ A `state` message from one side describes that side's view. Two sides can disagr
 The workhorse. A turn in a thread.
 
 ```json
-{"t":"msg","id":"01J9...","ts":"...","th":"thr_9k2","re":"01J8...",
+{"t":"msg","id":"01M32EQX38PZCB4F1NWY2J1T3B","ts":"2026-09-21T17:03:13.000Z","th":"thr_9k2","re":"01M32EP0HRKJ0RE775D6RK67TP",
  "subject":"Port the auth middleware to the new router",
  "parts":[
    {"k":"text","text":"Here is the diff so far. Can you run the integration suite on your side and tell me what breaks?"},
@@ -222,7 +224,7 @@ Part kinds
 9.2 `ack`
 
 ```json
-{"t":"ack","id":"...","ts":"...","th":"thr_9k2","re":"01J9..."}
+{"t":"ack","id":"01M32EQX6CRHD0R73D4JKSWN0Z","ts":"2026-09-21T17:03:13.100Z","th":"thr_9k2","re":"01M32EQX38PZCB4F1NWY2J1T3B"}
 ```
 
 Mandatory for `msg` and `state`. Says "I have durably received this". Acks drive outbox pruning: a sender MAY drop a message from its outbox once acked, and MUST keep it until then. Acks themselves are not acked.
@@ -232,7 +234,7 @@ Mandatory for `msg` and `state`. Says "I have durably received this". Acks drive
 Carries part of a blob. Blobs are identified by a sender-chosen `ref`, chunked in order, base64 encoded.
 
 ```json
-{"t":"chunk","id":"...","ts":"...","ref":"blob_44","n":0,"last":false,"data":"base64..."}
+{"t":"chunk","id":"01M32EQX9GMRNK5WD776NKMTMS","ts":"2026-09-21T17:03:13.200Z","ref":"blob_44","n":0,"last":false,"data":"PT09IFJVTiAgIFRlc3RBdXRoXG4="}
 ```
 
 - `n` is the chunk index from 0. `last` is true on the final chunk.
@@ -243,8 +245,8 @@ Carries part of a blob. Blobs are identified by a sender-chosen `ref`, chunked i
 9.4 `ping` and `pong`
 
 ```json
-{"t":"ping","id":"...","ts":"..."}
-{"t":"pong","id":"...","ts":"...","re":"<ping id>"}
+{"t":"ping","id":"01M32ERRE8VM3KJFQAT0MH8ZNW","ts":"2026-09-21T17:03:41.000Z"}
+{"t":"pong","id":"01M32ERRFJ2MFYPNG8QPCBGV2W","ts":"2026-09-21T17:03:41.042Z","re":"01M32ERRE8VM3KJFQAT0MH8ZNW"}
 ```
 
 Peers SHOULD ping when idle for 30 seconds and treat two missed pongs as a dead connection.
@@ -254,7 +256,7 @@ Peers SHOULD ping when idle for 30 seconds and treat two missed pongs as a dead 
 Sent by both sides after every handshake, including the first. Lists, per thread, the last message id the sender has durably received. An empty `seen` on a first connection is normal.
 
 ```json
-{"t":"resume","id":"...","ts":"...","seen":{"thr_9k2":"01J9...","thr_0aa":"01J7..."}}
+{"t":"resume","id":"01M32EQV6MBN328XE5F8PHP676","ts":"2026-09-21T17:03:11.060Z","seen":{"thr_9k2":"01M32EQX38PZCB4F1NWY2J1T3B","thr_0aa":"01M32B9ZGRSZRYMMB7SMASFERV"}}
 ```
 
 The receiver re-sends any outbox messages in those threads with ids greater than the seen id, plus every outbox message in threads the other side did not list, in original order, with original ids and timestamps. Replayed messages MUST be acked like new ones. Receivers MUST deduplicate by id, since a message can be replayed after it was received but before its ack got through.
@@ -262,7 +264,7 @@ The receiver re-sends any outbox messages in those threads with ids greater than
 9.6 `bye`
 
 ```json
-{"t":"bye","id":"...","ts":"...","reason":"done"}
+{"t":"bye","id":"01M32ETK18DDGTPPCBTWBDX5BD","ts":"2026-09-21T17:04:41.000Z","reason":"done"}
 ```
 
 Graceful close. After sending `bye` a peer sends nothing else and closes after the other side's `bye` or after 5 seconds.
@@ -270,7 +272,7 @@ Graceful close. After sending `bye` a peer sends nothing else and closes after t
 9.7 `err`
 
 ```json
-{"t":"err","id":"...","ts":"...","re":"<offending id, optional>","code":"unsupported","detail":"human readable"}
+{"t":"err","id":"01M32EQXCMF0147WTA543SCH0D","ts":"2026-09-21T17:03:13.300Z","re":"01M32EQX38PZCB4F1NWY2J1T3B","code":"unsupported","detail":"this peer does not run commands"}
 ```
 
 Codes: `bad_frame`, `version`, `auth`, `unsupported`, `forbidden`, `blob_refused`, `too_large`, `internal`. Whether an `err` closes the connection is stated per code above. `forbidden`, `unsupported`, `blob_refused` and `internal` do not close.
@@ -297,9 +299,15 @@ Anything beyond that is named by a capability string and requires a grant. Capab
 10.2 Grant object
 
 ```json
-{"iss":"ed25519:...", "sub":"ed25519:...", "caps":["exec","fs:read"],
- "exp":"2026-09-25T20:00:00Z", "nonce":"base64url", "sig":"base64url"}
+{"iss":"ed25519:4ypZnypm77nHtEjcuPHYf0KO6L3XClTwNG8t4d3u9iI",
+ "sub":"ed25519:SzOoZZ93chgozsW4_k3Bng7bw8nm9jhE8F_MT7DwsZM",
+ "caps":["exec","fs:read"],
+ "exp":"2026-09-25T20:00:00Z",
+ "nonce":"mi7aguVbYbdo0OZSdAyKig",
+ "sig":"KIc8YtMgZ0mjshD6ypfayh4E3QHHeRlpX2yL9HU1cpPHoqgIXYh9Ry00Shafa34OvFif31huoA1v5YbnsmUEDg"}
 ```
+
+This grant is real: `sig` verifies with `iss` over `{"caps":["exec","fs:read"],"exp":"2026-09-25T20:00:00Z","iss":"…","nonce":"…","sub":"…"}`, the object without `sig` in canonical form. `nonce` is 16 random bytes, unpadded base64url.
 
 - `iss` is the granting key, `sub` is the receiving key.
 - `sig` is `iss`'s signature over the canonical JSON of the object without `sig`. Canonical means keys sorted, no whitespace, UTF-8.
@@ -309,18 +317,19 @@ Anything beyond that is named by a capability string and requires a grant. Capab
 10.3 `grant` message
 
 ```json
-{"t":"grant","id":"...","ts":"...","grant":{ ...grant object... }}
+{"t":"grant","id":"01M32ER4X86MHV67FEFV6YQQWV","ts":"2026-09-21T17:03:21.000Z",
+ "grant":{"iss":"ed25519:4ypZnypm77nHtEjcuPHYf0KO6L3XClTwNG8t4d3u9iI","sub":"ed25519:SzOoZZ93chgozsW4_k3Bng7bw8nm9jhE8F_MT7DwsZM","caps":["exec","fs:read"],"exp":"2026-09-25T20:00:00Z","nonce":"mi7aguVbYbdo0OZSdAyKig","sig":"KIc8YtMgZ0mjshD6ypfayh4E3QHHeRlpX2yL9HU1cpPHoqgIXYh9Ry00Shafa34OvFif31huoA1v5YbnsmUEDg"}}
 ```
 
 10.4 `introduce` message
 
 ```json
-{"t":"introduce","id":"...","ts":"...","th":"thr_9k2",
- "peer":{"key":"ed25519:...","name":"codex@sprite-11","address":"tailcat:..."},
- "grant":{ ...grant issued by the introducer to the recipient, iss = introducer... }}
+{"t":"introduce","id":"01M32ER6VR2S4261R0SZ51JRF6","ts":"2026-09-21T17:03:23.000Z","th":"thr_9k2",
+ "peer":{"key":"ed25519:mvRRZsa9QrAKXyZp7sqTyoMfVBG3lfdD_jNwrq7Zqr8","name":"codex@sprite-11","address":"tailcat:tcuiz4guz70c5spcqucu9kj5v49gue0n6mjr9dk23gtwuckx1scp"},
+ "grant":{"iss":"ed25519:SzOoZZ93chgozsW4_k3Bng7bw8nm9jhE8F_MT7DwsZM","sub":"ed25519:4ypZnypm77nHtEjcuPHYf0KO6L3XClTwNG8t4d3u9iI","caps":["chat"],"exp":"2026-09-26T17:00:00Z","nonce":"ZdMSMmjc16d87bOTE3-wFA","sig":"GV9Vc4jNyx6GKzj1IxzeaFa5nFRkvKzPHcPErKwZvAh0IfW-c0iCmILZpXYR8VsaBcYg5-GxFZ0xv3iHq25wAA"}}
 ```
 
-The recipient may connect to the introduced peer and present the grant. The introduced peer honors it only if it trusts the introducer with `introduce`.
+The recipient may connect to the introduced peer and present the grant. The introduced peer honors it only if it trusts the introducer with `introduce`. In the example the grant is issued by the introducer (`iss`) to the recipient (`sub`) for the introduced peer to honor.
 
 ## 11. Conventions for coding agents
 

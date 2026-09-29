@@ -55,5 +55,8 @@ jobs:
       - name: Go/Python interop
         run: make interop
 
+      - name: Conformance suite against the Python peer
+        run: make conformance
+
       - name: Cross-compile the release artifacts
         run: scripts/dist.sh 0.0.0-ci
