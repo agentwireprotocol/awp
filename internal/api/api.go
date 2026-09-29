@@ -4,6 +4,7 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/agentwireprotocol/awp/store"
@@ -12,44 +13,63 @@ import (
 
 // Status describes the running daemon.
 type Status struct {
-	Key         string     `json:"key"`
-	Short       string     `json:"short"`
-	Name        string     `json:"name"`
-	About       string     `json:"about"`
-	Harness     string     `json:"harness,omitempty"`    // the agent harness this daemon runs in
-	ShareWith   []PeerRef  `json:"share_with,omitempty"` // hosts this agent mirrors its conversations to
-	Model       string     `json:"model,omitempty"`      // the model the agent runs on, as last reported
-	Active      *time.Time `json:"active,omitempty"`     // when the agent last acted through awp
-	Waiting     bool       `json:"waiting,omitempty"`    // blocked in awp wait now
-	Host        string     `json:"host,omitempty"`       // this machine's hostname
-	Fingerprint string     `json:"fingerprint"`
-	Version     string     `json:"version"`
-	Home        string     `json:"home"`
-	PID         int        `json:"pid"`
-	Started     time.Time  `json:"started"`
-	Addresses   []string   `json:"addresses"`
-	Tailcat     string     `json:"tailcat,omitempty"` // bare tc... address to share
-	TailcatErr  string     `json:"tailcat_error,omitempty"`
-	TailcatWant bool       `json:"tailcat_enabled"`
-	Presence    bool       `json:"presence,omitempty"` // publishing presence (see NOTES.md)
-	Serve       []string   `json:"serve,omitempty"`
-	Accept      string     `json:"accept"`
-	Peers       []PeerView `json:"peers"`
-	Unread      int        `json:"unread"`  // messages and states from peers not yet read
-	Notices     int        `json:"notices"` // unread local notices (connection, sharing and file events)
-	Outbox      int        `json:"outbox"`
+	Key         string            `json:"key"`
+	Short       string            `json:"short"`
+	Name        string            `json:"name"`
+	About       string            `json:"about"`
+	Harness     string            `json:"harness,omitempty"`    // the agent harness this daemon runs in
+	ShareWith   []PeerRef         `json:"share_with,omitempty"` // hosts this agent mirrors its conversations to
+	Model       string            `json:"model,omitempty"`      // the model the agent runs on, as last reported
+	Active      *time.Time        `json:"active,omitempty"`     // when the agent last acted through awp
+	Waiting     bool              `json:"waiting,omitempty"`    // blocked in awp wait now
+	Host        string            `json:"host,omitempty"`       // this machine's hostname
+	Fingerprint string            `json:"fingerprint"`
+	Version     string            `json:"version"`
+	Home        string            `json:"home"`
+	PID         int               `json:"pid"`
+	Started     time.Time         `json:"started"`
+	Address     string            `json:"address,omitempty"`  // the awp1 address to share, once a carrier is up
+	Endpoints   []string          `json:"endpoints"`          // kind:value, one per carrier endpoint in the address
+	Listen      []string          `json:"listen"`             // the carriers configured
+	Pending     map[string]string `json:"pending,omitempty"`  // carriers still coming up, and their last error
+	Presence    bool              `json:"presence,omitempty"` // publishing presence (see NOTES.md)
+	Serve       []string          `json:"serve,omitempty"`
+	Accept      string            `json:"accept"`
+	Peers       []PeerView        `json:"peers"`
+	Unread      int               `json:"unread"`  // messages and states from peers not yet read
+	Notices     int               `json:"notices"` // unread local notices (connection, sharing and file events)
+	Outbox      int               `json:"outbox"`
 }
 
-// ShareAddress is the address to hand to another agent: the tailcat
-// address when there is one, else the first listen address.
-func (s *Status) ShareAddress() string {
-	if s.Tailcat != "" {
-		return s.Tailcat
+// ShareAddress is the address to hand to another agent.
+func (s *Status) ShareAddress() string { return s.Address }
+
+// Settled reports whether every configured carrier is up, or has failed
+// while others are up: a caller waiting for an address can stop.
+func (s *Status) Settled() bool {
+	if len(s.Pending) == 0 {
+		return true
 	}
-	if len(s.Addresses) > 0 {
-		return s.Addresses[0]
+	if s.Address == "" {
+		return false
 	}
-	return ""
+	for _, e := range s.Pending {
+		if e == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// PendingError summarizes why carriers are not up yet.
+func (s *Status) PendingError() string {
+	var out []string
+	for k, e := range s.Pending {
+		if e != "" {
+			out = append(out, k+": "+e)
+		}
+	}
+	return strings.Join(out, "; ")
 }
 
 // PeerView is a peer as the daemon sees it right now.

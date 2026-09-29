@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/agentwireprotocol/awp/store"
+	"github.com/agentwireprotocol/awp/tunnel"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
-// Admission policies (section 7.3).
+// Admission policies (section 10.2).
 const (
 	// AcceptAny admits any key with the default capabilities. It is what
 	// the spec recommends for a coding agent on a sandbox.
@@ -21,7 +22,7 @@ const (
 	AcceptAllowlist = "allowlist"
 )
 
-// Capabilities with a meaning in this implementation (section 10.1).
+// Capabilities with a meaning in this implementation (section 13.1).
 const (
 	CapExec      = "exec"
 	CapFSRead    = "fs:read"
@@ -74,7 +75,7 @@ type honored struct {
 	caps []string
 }
 
-// honoredGrants applies section 10.2: a grant counts if we issued it, if a
+// honoredGrants applies section 13.2: a grant counts if we issued it, if a
 // trusted key issued it, or if its issuer holds an introduce grant from us
 // or a trusted key (one level of delegation). A delegated grant is
 // attenuated: it confers at most what the introducer itself was granted,
@@ -193,14 +194,18 @@ func (n *Node) acceptPresentedGrant(peer string, raw json.RawMessage, via string
 // grantsToPresent picks the grants we hold that concern the peer we are
 // talking to: ones it issued, and introductions meant for it. Other grants
 // stay private.
-func (n *Node) grantsToPresent(peer string) []json.RawMessage {
+func (n *Node) grantsToPresent(s *tunnel.Stream) []json.RawMessage {
 	held, err := n.st.Grants(store.GrantQuery{Role: store.RoleHeld, Sub: n.key, ValidAt: time.Now()})
 	if err != nil {
 		return nil
 	}
+	is := func(key string) bool {
+		pub, err := wire.ParseKey(key)
+		return err == nil && s.Is(pub)
+	}
 	var out []json.RawMessage
 	for _, g := range held {
-		if g.Iss == peer || g.Audience == peer {
+		if is(g.Iss) || (g.Audience != "" && is(g.Audience)) {
 			out = append(out, json.RawMessage(g.Raw))
 		}
 	}

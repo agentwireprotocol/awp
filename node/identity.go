@@ -19,7 +19,7 @@ type identityFile struct {
 
 // loadIdentity reads the key at path, creating a new one (mode 0600) if the
 // file does not exist. A sandbox that starts with an empty home therefore
-// gets a fresh key, as section 13 recommends.
+// gets a fresh key, as section 16 recommends.
 func loadIdentity(path string) (ed25519.PrivateKey, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {

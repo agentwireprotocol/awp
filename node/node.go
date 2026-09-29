@@ -8,18 +8,16 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"net"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/agentwireprotocol/awp/store"
-	"github.com/agentwireprotocol/awp/transport"
+	"github.com/agentwireprotocol/awp/tunnel"
 	"github.com/agentwireprotocol/awp/wire"
+	"tailscale.com/types/logger"
 )
 
 // Config configures a Node. Zero values get the defaults from the spec.
@@ -48,13 +46,14 @@ type Config struct {
 	// remembered, since the next start may come from another harness.
 	DetectedHarness string
 
-	// Listen lists addresses to accept connections on: "tailcat",
-	// "tcp:host:port" or "unix:/path".
+	// Listen lists the carriers to accept connections on (tunnel.Config):
+	// "tailcat", "udp:HOST:PORT", "unix:/path", "ws:HOST:PORT[=URL]" or
+	// "cloudflare".
 	Listen []string
 
-	// Advertise is the address sent in hello.addr so the peer can dial us
-	// back. Empty means the tailcat address if there is one, otherwise the
-	// first listen address. "none" disables it.
+	// Advertise controls hello.addr, the address the peer can dial us back
+	// at: empty sends this node's address without its pre-shared key,
+	// "none" sends nothing.
 	Advertise string
 
 	PingInterval     time.Duration // idle time before a ping; default 30s
@@ -72,9 +71,8 @@ type Config struct {
 	TailcatLogf func(format string, args ...any)
 	// Trace logs every line sent and received.
 	Trace bool
-	// AllowPlaintext permits plain TCP to public addresses (see
-	// transport.Transport.AllowPublicTCP).
-	AllowPlaintext bool
+	// Cloudflared is the cloudflared binary for the cloudflare carrier.
+	Cloudflared string
 	// Presence publishes this node's signed presence to its peers, who
 	// gossip it on (presence.go). Receiving and forwarding other agents'
 	// presence happens either way.
@@ -119,18 +117,15 @@ type Node struct {
 	key   string
 	st    *store.Store
 	ids   *wire.IDGen
-	tr    *transport.Transport
+	tun   *tunnel.Tunnel
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	mu         sync.Mutex
-	peers      map[string]*peerState
-	listeners  []*listener
-	tailcat    *transport.TailcatListener
-	tailcatErr string
-	closed     bool
+	mu     sync.Mutex
+	peers  map[string]*peerState
+	closed bool
 
 	cmu      sync.Mutex
 	changeCh chan struct{}
@@ -138,11 +133,6 @@ type Node struct {
 	presMu  sync.Mutex
 	presSeq int64           // last presence sequence number used
 	presDoc json.RawMessage // last signed presence document we published
-}
-
-type listener struct {
-	addr string
-	ln   net.Listener
 }
 
 // peerState is the in-memory state for one remote key.
@@ -184,9 +174,22 @@ func Open(cfg Config) (*Node, error) {
 	if last, err := st.MaxOwnID(); err == nil && last != "" {
 		n.ids.Observe(last)
 	}
-	n.tr = &transport.Transport{AllowPublicTCP: cfg.AllowPlaintext}
+	var tlogf logger.Logf
 	if cfg.TailcatLogf != nil {
-		n.tr.Logf = cfg.TailcatLogf
+		tlogf = logger.Logf(cfg.TailcatLogf)
+	}
+	n.tun, err = tunnel.New(tunnel.Config{
+		Identity:    priv,
+		StateDir:    cfg.Home,
+		Listen:      cfg.Listen,
+		Changed:     n.bump,
+		Logf:        cfg.Logf,
+		TailcatLogf: tlogf,
+		Cloudflared: cfg.Cloudflared,
+	})
+	if err != nil {
+		st.Close()
+		return nil, err
 	}
 	// Name and about persist once set, so a daemon started on demand by
 	// any command keeps the identity its user gave it.
@@ -259,30 +262,15 @@ func (n *Node) logf(format string, args ...any) {
 	n.cfg.Logf(format, args...)
 }
 
-// Start opens the listeners and starts reconnecting to peers that have
-// unfinished business. A tailcat listener starts in the background, since
-// picking a DERP region takes a few seconds.
+// Start opens the carriers and starts reconnecting to peers that have
+// unfinished business. tailcat and cloudflare come up in the background,
+// since they take seconds.
 func (n *Node) Start() error {
-	for _, l := range n.cfg.Listen {
-		if l == "tailcat" {
-			n.wg.Add(1)
-			go n.startTailcat()
-			continue
-		}
-		a, err := transport.Parse(l)
-		if err != nil {
-			return err
-		}
-		ln, err := transport.Listen(a)
-		if err != nil {
-			return fmt.Errorf("listen %s: %w", l, err)
-		}
-		addr := a
-		if a.Kind == transport.KindTCP {
-			addr.Target = ln.Addr().String()
-		}
-		n.addListener(&listener{addr: addr.String(), ln: ln})
+	if err := n.tun.Start(); err != nil {
+		return err
 	}
+	n.wg.Add(1)
+	go n.acceptLoop()
 	n.wg.Add(1)
 	go n.maintain()
 	if n.cfg.Presence {
@@ -292,63 +280,20 @@ func (n *Node) Start() error {
 	return nil
 }
 
-func (n *Node) addListener(l *listener) {
-	n.mu.Lock()
-	n.listeners = append(n.listeners, l)
-	n.mu.Unlock()
-	n.logf("listening on %s", l.addr)
-	n.wg.Add(1)
-	go n.acceptLoop(l)
-	n.bump()
-}
-
-func (n *Node) startTailcat() {
-	defer n.wg.Done()
-	backoff := 5 * time.Second
-	for {
-		ctx, cancel := context.WithTimeout(n.ctx, 60*time.Second)
-		tl, err := transport.ListenTailcat(ctx, filepath.Join(n.cfg.Home, "tailcat.json"), n.tr.Logf)
-		cancel()
-		if err == nil {
-			n.mu.Lock()
-			if n.closed {
-				n.mu.Unlock()
-				tl.Close()
-				return
-			}
-			n.tailcat = tl
-			n.tailcatErr = ""
-			n.mu.Unlock()
-			n.addListener(&listener{addr: "tailcat:" + tl.Address(), ln: tl})
-			return
-		}
-		n.mu.Lock()
-		n.tailcatErr = err.Error()
-		n.mu.Unlock()
-		n.logf("tailcat listener: %v (retrying in %v)", err, backoff)
-		select {
-		case <-n.ctx.Done():
-			return
-		case <-time.After(backoff):
-		}
-		backoff = min(backoff*2, 5*time.Minute)
-	}
-}
-
-func (n *Node) acceptLoop(l *listener) {
+func (n *Node) acceptLoop() {
 	defer n.wg.Done()
 	for {
-		raw, err := l.ln.Accept()
+		s, err := n.tun.Accept()
 		if err != nil {
 			if n.ctx.Err() == nil {
-				n.logf("accept on %s: %v", l.addr, err)
+				n.logf("accept: %v", err)
 			}
 			return
 		}
 		n.wg.Add(1)
 		go func() {
 			defer n.wg.Done()
-			n.serveConn(raw, false, l.addr, nil)
+			n.serveConn(s, false, nil)
 		}()
 	}
 }
@@ -368,64 +313,42 @@ func (n *Node) Close() error {
 			conns = append(conns, p.conn)
 		}
 	}
-	ls := n.listeners
 	n.mu.Unlock()
 	n.cancel()
-	for _, l := range ls {
-		l.ln.Close()
-	}
 	for _, c := range conns {
 		c.Close("shutdown")
 	}
+	n.tun.Close()
 	n.wg.Wait()
-	n.tr.Close()
 	return n.st.Close()
 }
 
-// Addresses returns the addresses this node listens on, tailcat first.
-func (n *Node) Addresses() []string {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	var out []string
-	for _, l := range n.listeners {
-		out = append(out, l.addr)
-	}
-	slices.SortStableFunc(out, func(a, b string) int {
-		ta, tb := strings.HasPrefix(a, "tailcat:"), strings.HasPrefix(b, "tailcat:")
-		switch {
-		case ta && !tb:
-			return -1
-		case tb && !ta:
-			return 1
-		}
-		return 0
-	})
-	return out
-}
+// Address returns this node's address (section 6): its key, the listener's
+// pre-shared key and every endpoint it listens on. It has no endpoints
+// until a carrier is up.
+func (n *Node) Address() tunnel.Address { return n.tun.Address() }
 
-// TailcatAddress returns the bare tailcat address, if listening on tailcat.
-func (n *Node) TailcatAddress() (addr, errMsg string) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	if n.tailcat != nil {
-		return n.tailcat.Address(), ""
-	}
-	return "", n.tailcatErr
+// Pending lists carriers still coming up, with their last error if any.
+func (n *Node) Pending() map[string]string { return n.tun.Pending() }
+
+// RotatePSK replaces the listener's pre-shared key: every address shared
+// before stops admitting peers not met yet.
+func (n *Node) RotatePSK() error {
+	err := n.tun.RotatePSK()
+	n.bump()
+	return err
 }
 
 // advertised is the address sent in hello.addr.
 func (n *Node) advertised() string {
-	switch n.cfg.Advertise {
-	case "none":
-		return ""
-	case "":
-		addrs := n.Addresses()
-		if len(addrs) > 0 {
-			return addrs[0]
-		}
+	if n.cfg.Advertise == "none" {
 		return ""
 	}
-	return n.cfg.Advertise
+	a := n.tun.Address()
+	if len(a.Endpoints) == 0 {
+		return ""
+	}
+	return a.Public().String()
 }
 
 // --- change notification ---
@@ -623,7 +546,7 @@ func (n *Node) reconnectAll() {
 	}
 }
 
-// wantConnection is the rule from section 4.3: keep trying for as long as
+// wantConnection is the rule from section 10.3: keep trying for as long as
 // there are unacked messages or open threads, unless the peer is parked
 // (a bye was exchanged and nothing new has been queued since).
 func (n *Node) wantConnection(key string) bool {

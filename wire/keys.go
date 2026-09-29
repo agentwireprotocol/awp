@@ -44,7 +44,7 @@ func ShortKey(key string) string {
 	return body
 }
 
-// Fingerprint is the SHA-256 fingerprint of a public key, the way section 13
+// Fingerprint is the SHA-256 fingerprint of a public key, the way section 16
 // suggests agents print it in their about text.
 func Fingerprint(pub ed25519.PublicKey) string {
 	sum := sha256.Sum256(pub)
@@ -75,38 +75,8 @@ func Nonce(n int) string {
 	return EncodeB64(b)
 }
 
-// AuthPayload is the byte string signed in auth:
-// "awp-auth-v0" || 0x00 || my_hello_line || 0x00 || peer_hello_line.
-func AuthPayload(myHello, peerHello []byte) []byte {
-	b := make([]byte, 0, len(AuthContext)+2+len(myHello)+len(peerHello))
-	b = append(b, AuthContext...)
-	b = append(b, 0)
-	b = append(b, myHello...)
-	b = append(b, 0)
-	b = append(b, peerHello...)
-	return b
-}
-
-// SignAuth signs the auth transcript from the signer's point of view.
-func SignAuth(priv ed25519.PrivateKey, myHello, peerHello []byte) string {
-	return EncodeB64(ed25519.Sign(priv, AuthPayload(myHello, peerHello)))
-}
-
 // ErrBadSignature means a signature did not verify.
 var ErrBadSignature = errors.New("signature does not verify")
-
-// VerifyAuth checks the peer's auth signature. From the verifier's side the
-// peer's hello comes first, since the peer signed its own hello first.
-func VerifyAuth(peer ed25519.PublicKey, sig string, peerHello, myHello []byte) error {
-	raw, err := DecodeB64(sig)
-	if err != nil {
-		return fmt.Errorf("sig: %v", err)
-	}
-	if !ed25519.Verify(peer, AuthPayload(peerHello, myHello), raw) {
-		return ErrBadSignature
-	}
-	return nil
-}
 
 func abbrev(s string) string {
 	if len(s) > 24 {

@@ -20,7 +20,7 @@ import (
 	"github.com/agentwireprotocol/awp/internal/version"
 	"github.com/agentwireprotocol/awp/node"
 	"github.com/agentwireprotocol/awp/store"
-	"github.com/agentwireprotocol/awp/transport"
+	"github.com/agentwireprotocol/awp/tunnel"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
@@ -132,6 +132,11 @@ func (d *Daemon) Call(ctx context.Context, method string, params json.RawMessage
 		return map[string]bool{"ok": true}, nil
 	case "status":
 		return d.status()
+	case "rotate_psk":
+		if err := d.n.RotatePSK(); err != nil {
+			return nil, err
+		}
+		return map[string]bool{"ok": true}, nil
 	case "mirrored":
 		return d.n.Store().MirroredThreads()
 	case "set_share":
@@ -299,7 +304,6 @@ func (d *Daemon) Stream(ctx context.Context, method string, params json.RawMessa
 func (d *Daemon) status() (*api.Status, error) {
 	n := d.n
 	st := n.Store()
-	tc, tcErr := n.TailcatAddress()
 	peers, err := d.peerViews()
 	if err != nil {
 		return nil, err
@@ -336,10 +340,10 @@ func (d *Daemon) status() (*api.Status, error) {
 		Home:        d.cfg.Home,
 		PID:         os.Getpid(),
 		Started:     d.started,
-		Addresses:   n.Addresses(),
-		Tailcat:     tc,
-		TailcatErr:  tcErr,
-		TailcatWant: slices.Contains(d.cfg.Listen, "tailcat"),
+		Address:     addrString(n.Address()),
+		Endpoints:   endpoints(n.Address()),
+		Listen:      d.cfg.Listen,
+		Pending:     n.Pending(),
 		Presence:    n.SharesPresence(),
 		Serve:       d.cfg.Policy.Serve,
 		Accept:      d.cfg.Policy.Accept,
@@ -430,10 +434,10 @@ func (d *Daemon) connect(ctx context.Context, p api.ConnectParams) (*api.Connect
 	defer cancel()
 	addr := p.Address
 	// A known peer's name or key reconnects to its best known address.
-	if _, err := transport.Parse(addr); err != nil {
+	if !tunnel.IsAddress(addr) {
 		key, rerr := d.n.ResolvePeer(addr)
 		if rerr != nil {
-			return nil, fmt.Errorf("%v; and %v", err, rerr)
+			return nil, fmt.Errorf("%q is not an address (awp1...) and %v", addr, rerr)
 		}
 		pv := d.view(key)
 		if pv.Connected {
@@ -442,15 +446,10 @@ func (d *Daemon) connect(ctx context.Context, p api.ConnectParams) (*api.Connect
 		if len(pv.Addrs) == 0 {
 			return nil, fmt.Errorf("no known address for %s", pv.Label())
 		}
-		var lastErr error
-		for _, a := range pv.Addrs {
-			if k, err := d.n.Connect(ctx, a.Addr); err == nil && k == key {
-				return d.connected(k, start), nil
-			} else if err != nil {
-				lastErr = err
-			}
+		if err := d.n.ConnectKey(ctx, key); err != nil {
+			return nil, err
 		}
-		return nil, lastErr
+		return d.connected(key, start), nil
 	}
 	key, err := d.n.Connect(ctx, addr)
 	if err != nil {
@@ -478,7 +477,7 @@ func (d *Daemon) resolve(ctx context.Context, peer, th string) (string, error) {
 		}
 		return d.n.ResolveThread(th)
 	}
-	if _, err := transport.Parse(peer); err == nil {
+	if tunnel.IsAddress(peer) {
 		res, err := d.connect(ctx, api.ConnectParams{Address: peer})
 		if err != nil {
 			return "", err
@@ -818,4 +817,20 @@ func (d *Daemon) shareRefs() []api.PeerRef {
 		refs = append(refs, ref)
 	}
 	return refs
+}
+
+// addrString is the address to share, or "" while no carrier is up.
+func addrString(a tunnel.Address) string {
+	if len(a.Endpoints) == 0 {
+		return ""
+	}
+	return a.String()
+}
+
+func endpoints(a tunnel.Address) []string {
+	out := []string{}
+	for _, e := range a.Endpoints {
+		out = append(out, e.String())
+	}
+	return out
 }

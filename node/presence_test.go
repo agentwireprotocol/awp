@@ -164,9 +164,8 @@ func TestPresenceExpiry(t *testing.T) {
 // handshakeCaps is handshake with the given hello caps.
 func (p *rawPeer) handshakeCaps(caps string) {
 	p.t.Helper()
-	my := fmt.Sprintf(`{"t":"hello","id":"%s","ts":"%s","v":0,"key":"%s","name":"raw","nonce":"%s","caps":%s}`,
-		wire.NewIDGen().New(), wire.Now(), p.key, wire.Nonce(32), caps)
-	p.send(my)
+	p.send(fmt.Sprintf(`{"t":"hello","id":"%s","ts":"%s","v":%d,"key":"%s","name":"raw","caps":%s}`,
+		wire.NewIDGen().New(), wire.Now(), wire.Version, p.key, caps))
 	env, theirs := p.read()
 	if env.T != wire.THello {
 		p.t.Fatalf("first line %s", env.T)
@@ -175,10 +174,6 @@ func (p *rawPeer) handshakeCaps(caps string) {
 	json.Unmarshal(theirs, &h)
 	if !slices.Contains(h.Caps, wire.TPresence) {
 		p.t.Fatalf("hello caps %v lack presence", h.Caps)
-	}
-	p.send(fmt.Sprintf(`{"t":"auth","id":"x2","ts":"%s","sig":"%s"}`, wire.Now(), wire.SignAuth(p.priv, []byte(my), theirs)))
-	if env, _ := p.read(); env.T != wire.TAuth {
-		p.t.Fatalf("expected auth, got %s", env.T)
 	}
 	if env, _ := p.read(); env.T != wire.TResume {
 		p.t.Fatalf("expected resume, got %s", env.T)

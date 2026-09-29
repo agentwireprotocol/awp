@@ -2,6 +2,7 @@ package conformance_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,7 +14,11 @@ import (
 
 func startNode(t *testing.T) *node.Node {
 	t.Helper()
-	home := t.TempDir()
+	home, err := os.MkdirTemp("", "awpc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(home) })
 	n, err := node.Open(node.Config{
 		Home:             home,
 		Name:             "go@test",
@@ -53,7 +58,7 @@ func TestReferenceImplementation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	rep, err := conformance.Run(ctx, conformance.Options{
-		Addr:    n.Addresses()[0],
+		Addr:    n.Address().String(),
 		Timeout: 10 * time.Second,
 		Logf:    t.Logf,
 	})
@@ -76,17 +81,22 @@ func TestReferenceImplementation(t *testing.T) {
 // connection run, the solo ones are skipped.
 func TestListenMode(t *testing.T) {
 	n := startNode(t)
-	sock := "unix:" + filepath.Join(t.TempDir(), "runner.sock")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+	addr := make(chan string, 1)
 	go func() {
-		// Give the runner a moment to listen, then connect.
-		time.Sleep(300 * time.Millisecond)
-		if _, err := n.Connect(ctx, sock); err != nil {
+		// Connect once the runner says where it listens.
+		a := <-addr
+		if _, err := n.Connect(ctx, a); err != nil {
 			t.Logf("connect: %v", err)
 		}
 	}()
-	rep, err := conformance.Run(ctx, conformance.Options{Listen: sock, Timeout: 10 * time.Second, Logf: t.Logf})
+	rep, err := conformance.Run(ctx, conformance.Options{Listen: "udp:127.0.0.1:0", Timeout: 10 * time.Second, Logf: func(f string, a ...any) {
+		t.Logf(f, a...)
+		if strings.HasPrefix(f, "listening at") {
+			addr <- a[0].(string)
+		}
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +113,7 @@ func TestListenMode(t *testing.T) {
 	if rep.Skipped != solo {
 		t.Fatalf("%d skipped, want the %d solo scenarios", rep.Skipped, solo)
 	}
-	if !strings.HasPrefix(rep.Addr, "unix:") {
+	if !strings.HasPrefix(rep.Addr, "awp1") {
 		t.Fatalf("report address %q", rep.Addr)
 	}
 }
@@ -112,7 +122,7 @@ func TestListenMode(t *testing.T) {
 func TestOnly(t *testing.T) {
 	n := startNode(t)
 	ctx := context.Background()
-	rep, err := conformance.Run(ctx, conformance.Options{Addr: n.Addresses()[0], Only: []string{"ping", "bye"}, Timeout: 10 * time.Second})
+	rep, err := conformance.Run(ctx, conformance.Options{Addr: n.Address().String(), Only: []string{"ping", "bye"}, Timeout: 10 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +130,7 @@ func TestOnly(t *testing.T) {
 		report(t, rep)
 		t.Fatalf("results %+v", rep.Results)
 	}
-	if _, err := conformance.Run(ctx, conformance.Options{Addr: n.Addresses()[0], Only: []string{"nope"}}); err == nil {
+	if _, err := conformance.Run(ctx, conformance.Options{Addr: n.Address().String(), Only: []string{"nope"}}); err == nil {
 		t.Fatal("unknown scenario accepted")
 	}
 }

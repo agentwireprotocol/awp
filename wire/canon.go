@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-// Canonical re-encodes a JSON document the way section 10.2 defines
+// Canonical re-encodes a JSON document the way section 13.2 defines
 // canonical JSON: object keys sorted, no whitespace, UTF-8. Strings escape
 // only what JSON requires (quote, backslash and control characters, using
 // the short forms \b \f \n \r \t), so the output matches Python's

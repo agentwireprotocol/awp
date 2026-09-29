@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// GrantObject is the wire form of a grant (section 10.2): a signed
+// GrantObject is the wire form of a grant (section 13.2): a signed
 // statement that sub may use caps until exp, honored by iss and by whoever
 // trusts iss. sig is iss's Ed25519 signature over the canonical JSON of the
 // object without sig: keys sorted, no whitespace, UTF-8.
@@ -21,7 +21,7 @@ type GrantObject struct {
 	Iss string `json:"iss" jsonschema:"pattern=^ed25519:[A-Za-z0-9_-]{43}$"`
 	// Sub is the receiving key.
 	Sub string `json:"sub" jsonschema:"pattern=^ed25519:[A-Za-z0-9_-]{43}$"`
-	// Caps are the capability strings granted (section 10.1).
+	// Caps are the capability strings granted (section 13.1).
 	Caps []string `json:"caps"`
 	// Exp is when the grant expires, RFC 3339.
 	Exp string `json:"exp" jsonschema:"format=date-time"`

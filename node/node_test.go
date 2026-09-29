@@ -16,13 +16,14 @@ import (
 	"time"
 
 	"github.com/agentwireprotocol/awp/store"
+	"github.com/agentwireprotocol/awp/tunnel"
 	"github.com/agentwireprotocol/awp/wire"
 )
 
 // testNode starts a node listening on a Unix socket in its own home.
 func testNode(t *testing.T, name string, mod ...func(*Config)) *Node {
 	t.Helper()
-	home := t.TempDir()
+	home := shortTemp(t)
 	cfg := Config{
 		Home:             home,
 		Name:             name,
@@ -65,7 +66,19 @@ func restart(t *testing.T, n *Node) *Node {
 	return m
 }
 
-func addr(n *Node) string { return n.Addresses()[0] }
+func addr(n *Node) string { return n.Address().String() }
+
+// shortTemp is a temporary directory with a short path, since Unix socket
+// paths are limited to about 100 bytes.
+func shortTemp(t *testing.T) string {
+	t.Helper()
+	d, err := os.MkdirTemp("", "awpn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(d) })
+	return d
+}
 
 // waitFor polls cond at every state change of n until it holds.
 func waitFor(t *testing.T, n *Node, what string, cond func() bool) {
@@ -327,21 +340,35 @@ func TestBlobSentOnAck(t *testing.T) {
 type rawPeer struct {
 	t    *testing.T
 	c    net.Conn
+	tun  *tunnel.Tunnel
 	r    *wire.Reader
 	priv ed25519.PrivateKey
 	key  string
 }
 
+// dialRaw opens a tunnel stream to n from a fresh key and hands it to the
+// test to speak NDJSON on directly.
 func dialRaw(t *testing.T, n *Node) *rawPeer {
 	t.Helper()
-	c, err := net.Dial("unix", strings.TrimPrefix(addr(n), "unix:"))
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	tu, err := tunnel.New(tunnel.Config{Identity: priv})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { tu.Close() })
+	a, err := tunnel.ParseAddress(addr(n))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, err := tu.Dial(ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { c.Close() })
-	pub, priv, _ := ed25519.GenerateKey(nil)
 	c.SetDeadline(time.Now().Add(10 * time.Second))
-	return &rawPeer{t: t, c: c, r: wire.NewReader(c), priv: priv, key: wire.FormatKey(pub)}
+	return &rawPeer{t: t, c: c, tun: tu, r: wire.NewReader(c), priv: priv, key: wire.FormatKey(pub)}
 }
 
 func (p *rawPeer) send(line string) {
@@ -387,22 +414,18 @@ func (p *rawPeer) expectErr(code string) {
 	}
 }
 
-func (p *rawPeer) hello(v int) string {
-	return fmt.Sprintf(`{"t":"hello","id":"%s","ts":"%s","v":%d,"key":"%s","name":"raw","nonce":"%s","caps":["chat"]}`, wire.NewIDGen().New(), wire.Now(), v, p.key, wire.Nonce(32))
+func (p *rawPeer) hello(v int) string { return p.helloAs(v, p.key) }
+
+func (p *rawPeer) helloAs(v int, key string) string {
+	return fmt.Sprintf(`{"t":"hello","id":"%s","ts":"%s","v":%d,"key":"%s","name":"raw","caps":["chat"]}`, wire.NewIDGen().New(), wire.Now(), v, key)
 }
 
-// handshake completes hello, auth and resume like a real peer would.
+// handshake completes hello and resume like a real peer would.
 func (p *rawPeer) handshake() {
 	p.t.Helper()
-	my := p.hello(0)
-	p.send(my)
-	env, theirs := p.read()
-	if env.T != wire.THello {
+	p.send(p.hello(wire.Version))
+	if env, _ := p.read(); env.T != wire.THello {
 		p.t.Fatalf("first line %s", env.T)
-	}
-	p.send(fmt.Sprintf(`{"t":"auth","id":"x2","ts":"%s","sig":"%s"}`, wire.Now(), wire.SignAuth(p.priv, []byte(my), theirs)))
-	if env, _ := p.read(); env.T != wire.TAuth {
-		p.t.Fatalf("expected auth, got %s", env.T)
 	}
 	if env, _ := p.read(); env.T != wire.TResume {
 		p.t.Fatalf("expected resume, got %s", env.T)
@@ -410,21 +433,25 @@ func (p *rawPeer) handshake() {
 	p.send(fmt.Sprintf(`{"t":"resume","id":"x3","ts":"%s","seen":{}}`, wire.Now()))
 }
 
-func TestBadAuth(t *testing.T) {
+// TestHelloKeyMismatch: hello must name the key on the other end of the
+// tunnel (section 10.1), and never the receiver's own.
+func TestHelloKeyMismatch(t *testing.T) {
 	n := testNode(t, "n")
-	p := dialRaw(t, n)
-	p.send(p.hello(0))
-	p.read() // their hello
-	// Sign the wrong transcript.
-	p.send(fmt.Sprintf(`{"t":"auth","id":"x","ts":"%s","sig":"%s"}`, wire.Now(), wire.SignAuth(p.priv, []byte("forged"), []byte("transcript"))))
-	p.read() // their auth
-	p.expectErr(wire.ErrAuth)
+	other, _, _ := ed25519.GenerateKey(nil)
+	for name, key := range map[string]string{"another key": wire.FormatKey(other), "its own key": n.Key()} {
+		t.Run(name, func(t *testing.T) {
+			p := dialRaw(t, n)
+			p.send(p.helloAs(wire.Version, key))
+			p.read() // their hello
+			p.expectErr(wire.ErrAuth)
+		})
+	}
 }
 
 func TestVersionMismatch(t *testing.T) {
 	n := testNode(t, "n")
 	p := dialRaw(t, n)
-	p.send(p.hello(1))
+	p.send(p.hello(wire.Version + 1))
 	p.read()
 	p.expectErr(wire.ErrVersion)
 }
@@ -605,8 +632,13 @@ func TestIntroduce(t *testing.T) {
 	}
 	waitFor(t, c, "introduction", func() bool { return len(received(t, c, b.Key(), "introduce")) == 1 })
 	p, _ := store.GetPeer(c.Store().DB(), a.Key())
-	if p == nil || len(p.Addrs) == 0 || p.Addrs[0].Addr != addr(a) {
+	if p == nil || len(p.Addrs) == 0 {
 		t.Fatalf("introduced peer at c: %+v", p)
+	}
+	// The introducer knew A's address with its pre-shared key (B dialed
+	// A), and handed that on.
+	if ia, err := tunnel.ParseAddress(p.Addrs[0].Addr); err != nil || ia.PSK == nil || ia.KeyString() != a.Key() {
+		t.Fatalf("introduced address %q: %v", p.Addrs[0].Addr, err)
 	}
 	// C dials the introduced address and presents the grant.
 	if _, err := c.Connect(ctx, p.Addrs[0].Addr); err != nil {
@@ -673,7 +705,8 @@ func TestDuplicateConnectionReplaced(t *testing.T) {
 	}
 	// A raw second connection from a's key is not possible without a's
 	// private key, so exercise replacement by dialing again directly.
-	if _, err := a.dial(context.Background(), addr(b)); err != nil {
+	ab, _ := tunnel.ParseAddress(addr(b))
+	if _, err := a.dial(context.Background(), ab); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, b, "one active connection", func() bool { return b.Connected(a.Key()) && a.Connected(b.Key()) })
@@ -683,23 +716,17 @@ func TestDuplicateConnectionReplaced(t *testing.T) {
 	waitFor(t, b, "msg", func() bool { return len(received(t, b, a.Key(), "msg")) == 1 })
 }
 
-func TestPlainTCPRefusedToPublicAddresses(t *testing.T) {
+func TestConnectRejectsBadAddresses(t *testing.T) {
 	a := testNode(t, "a")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := a.Connect(ctx, "tcp:1.1.1.1:7777")
-	if err == nil || !strings.Contains(err.Error(), "refusing plain TCP") {
-		t.Fatalf("public TCP dial: %v", err)
-	}
-	// Loopback is fine (the dial fails only because nothing listens).
-	_, err = a.Connect(ctx, "tcp:127.0.0.1:1")
-	if err == nil || strings.Contains(err.Error(), "refusing") {
-		t.Fatalf("loopback TCP dial: %v", err)
+	for _, bad := range []string{"tcp:127.0.0.1:1", "unix:/tmp/x", "tcomFwWCCcjS5nKNqAod034nWoJZW0LZqDhhC8U_dKdnDRYQ8uNGFpGQEu", addr(a)} {
+		if _, err := a.Connect(ctx, bad); err == nil {
+			t.Errorf("connected to %q", bad)
+		}
 	}
 }
 
-// An explicit harness is remembered and beats what the environment of a
-// later start suggests; a detected one is only a fallback, never remembered.
 func TestHarnessPrecedence(t *testing.T) {
 	open := func(home string, cfg Config) *Node {
 		t.Helper()

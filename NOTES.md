@@ -1,5 +1,7 @@
 # Implementation notes for SPEC.md draft 1
 
+Draft 2 (SPEC.md) folds in the proposals below and replaces the transport and the handshake they discuss: `auth` is gone, and so are the plain bindings. These notes stay as the record of why draft 2 says what it does.
+
 These notes come from building AWP twice, independently. The Go reference daemon is in this repository. The single-file Python peer (`python/awp_peer.py`) was written from SPEC.md alone, without looking at the Go code. The two interoperate (`python/interop_test.py`). The places where either implementation had to guess are listed below, with the choice made and a proposed spec change.
 
 ## Decisions on the open questions

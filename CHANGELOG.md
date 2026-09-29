@@ -4,9 +4,31 @@ Release versions of this implementation. The protocol version (`v` in `hello`) i
 
 ## [Unreleased]
 
+Draft 2 of the protocol (protocol v1), implemented. Not compatible with 0.6.0 or earlier: peers of the two drafts cannot connect, and addresses shared before do not work. `awp up` prints a new address.
+
 ### Changed
 
-- SPEC.md draft 2 (protocol v1). A connection is a WireGuard tunnel between the two peers' keys: the Ed25519 identity key, converted, is the WireGuard key, so the tunnel's authentication is the protocol's and `auth` is gone. Carriers move WireGuard datagrams and are interchangeable and untrusted: `udp`, `tailcat` (the default), `ws` (any HTTP tunnel, including Cloudflare quick tunnels), `unix`. Addresses are `awp1…` blobs of key, pre-shared key and endpoints; `hello` carries `ep` for reconnecting to the sender. Draft 1's notes are folded in: `aud` on grants, cumulative acks, chunks before their msg, what `seen` counts, strictly increasing ids, one connection per pair, the `refused` code, encodings and canonical JSON. Not compatible with draft 1. The implementation still speaks draft 1; the spec example test skips until the wire package follows.
+- SPEC.md draft 2. A connection is a WireGuard tunnel between the two peers' keys: the Ed25519 identity key, converted to X25519, is the WireGuard key, so the tunnel's authentication is the protocol's. `auth` and the hello nonce are gone; `hello.key` must be the key on the other end of the tunnel, and `grants` travel in hello. Carriers move WireGuard datagrams and are untrusted: tailcat (the default), UDP, WebSockets (any HTTP tunnel, including Cloudflare quick tunnels), Unix sockets. There is no plaintext binding. Draft 1's notes are folded in: `aud` on grants, cumulative acks, chunks before their msg, what `seen` counts, strictly increasing ids, one connection per pair, the `refused` code, encodings and canonical JSON.
+- Addresses are `awp1` strings: the key, the listener's pre-shared key and every endpoint it listens on, in one. `hello.addr` and `introduce.peer.address` are addresses too. Pre-shared keys are per pair once two peers have met, so `awp address --rotate` shuts out agents not met yet without cutting off the ones you know.
+- The engine runs on a new `tunnel` package: Tailscale's wireguard-go and a gVisor TCP/IP stack in userspace, with a `conn.Bind` over the carriers that follows a peer to wherever its last authenticated packet came from. The `transport` package is gone. `awp daemon --listen` takes carriers: `tailcat`, `udp:HOST:PORT`, `unix:/path`, `ws:HOST:PORT[=URL]` and `cloudflare`.
+- The JSON Schema is `schema/v1/awp.schema.json`, `$id` https://agentwireprotocol.com/schema/v1/awp.schema.json.
+- `awp conform` reaches the peer through a tunnel of its own and checks the tunnel binding: two new scenarios, `hello-key` and `hello-own-key`, replace `auth-bad-sig`. `--listen` takes a carrier.
+- `awp status` and the control API report the address, its endpoints, and carriers still coming up, in place of the tailcat fields.
+
+### Added
+
+- `awp tunnel`: the tunnel alone, as a helper process for SDKs in languages without WireGuard. It holds the SDK's key, prints the address, opens streams on request over a control socket, forwards the streams peers open, and refuses a hello that names another key before the SDK sees it.
+- `awp address --rotate`.
+- A CI job for the carriers that need the internet (tailcat, Cloudflare), and `make carriers`.
+
+### Fixed
+
+- `awp connect` right after a bye dials afresh instead of returning the connection that is closing.
+
+### Removed
+
+- The single-file Python peer (`python/`) and its interop and conformance scripts. The Python SDK (agentwireprotocol/python-sdk) runs the conformance suite in its own CI.
+- `AWP_ALLOW_PLAINTEXT` and the `tcp:` binding.
 
 ## [0.6.0] - 2026-09-29
 

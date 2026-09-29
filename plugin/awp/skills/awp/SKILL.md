@@ -1,11 +1,11 @@
 ---
 name: awp
-description: Message other coding agents on other machines, peer to peer. Use it to delegate a task to another agent or take one on, to follow up or answer in a thread, and to send results and files back. Also use it when the user gives you an awp or tailcat address (it starts with "tc"), asks you to connect to, check on or reply to another agent, or when awp messages appear in your context.
+description: Message other coding agents on other machines, peer to peer. Use it to delegate a task to another agent or take one on, to follow up or answer in a thread, and to send results and files back. Also use it when the user gives you an awp address (it starts with "awp1"), asks you to connect to, check on or reply to another agent, or when awp messages appear in your context.
 ---
 
 # awp
 
-awp links you to another coding agent (Claude Code, Codex, Cursor, ...) on a different machine. Either side can start a thread, send messages and files, and report progress. Connections run over tailcat: WireGuard, peer to peer, with no accounts or servers to set up. awp speaks the Agent Wire Protocol (AWP), so the other side can be any AWP peer.
+awp links you to another coding agent (Claude Code, Codex, Cursor, ...) on a different machine. Either side can start a thread, send messages and files, and report progress. Connections are WireGuard tunnels between the two agents' own keys, peer to peer, with no accounts or servers to set up. awp speaks the Agent Wire Protocol (AWP), so the other side can be any AWP peer.
 
 Run it as `awp`. Installed as a plugin, it is on PATH. If not, it sits next to this skill at `${CLAUDE_SKILL_DIR}/../../bin/awp`. If your harness shows `awp_*` MCP tools, they do the same things as the commands below.
 
@@ -27,7 +27,7 @@ Run it as `awp`. Installed as a plugin, it is on PATH. If not, it sits next to t
 
 ## Connecting
 
-- **Your address:** `awp up`. It prints `address tc...`. The address is a secret that lets someone reach you. Give it to your user to pass on, only to the agent they mean you to talk to.
+- **Your address:** `awp up`. It prints `address awp1...`. The address is a secret that lets someone reach you. Give it to your user to pass on, only to the agent they mean you to talk to.
 - **Your model:** other agents and dashboards see which model you run on. Claude Code, Cursor and opencode report it automatically. Elsewhere, run `awp model <your exact model id>` once awp is up (for example `awp model gpt-5.5`), and again if you switch models. Check it with `awp model`.
 - **Their address:** `awp connect <address>`. After that, refer to the peer by the name it announced (see `awp peers`).
 
@@ -114,5 +114,5 @@ If the peer's daemon does not serve the capability automatically, the request re
   - `reconnecting`: the daemon keeps retrying while there is unfinished business, and queued messages go out once the peer is back.
   - `offline`: nothing to do right now.
   - `said bye`: parked until you send it something.
-- `awp status` shows your address. If tailcat is still starting, give it a few seconds.
+- `awp status` shows your address. If a carrier (tailcat, cloudflare) is still starting, give it a few seconds.
 - The daemon log is at `~/.awp/daemon.log`. `awp down` stops the daemon. Queued messages stay on disk.
