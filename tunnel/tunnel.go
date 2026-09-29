@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/tailscale/wireguard-go/device"
@@ -127,6 +128,10 @@ func New(cfg Config) (*Tunnel, error) {
 	return t, nil
 }
 
+func inUse(err error) bool {
+	return errors.Is(err, syscall.EADDRINUSE) || strings.Contains(err.Error(), "already in use")
+}
+
 // Key is this tunnel's WireGuard public key.
 func (t *Tunnel) Key() Key { return t.pub }
 
@@ -222,7 +227,13 @@ func (t *Tunnel) Listen(spec string) error {
 		go t.listenRetry(i, spec)
 		return nil
 	}
+	// A restarted peer may find its socket or port still held for a moment
+	// by the process it replaces: try for a few seconds.
 	es, err := t.listenOne(t.ctx, spec)
+	for deadline := time.Now().Add(3 * time.Second); err != nil && inUse(err) && time.Now().Before(deadline); {
+		time.Sleep(100 * time.Millisecond)
+		es, err = t.listenOne(t.ctx, spec)
+	}
 	if err != nil {
 		t.mu.Lock()
 		t.errs[spec] = err.Error()
