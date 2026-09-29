@@ -100,27 +100,31 @@ Ed25519 seed        n91wt2HNOBdumTc7UI0QeqJw8wML6cYWcGzmd0k8Tbo
 Ed25519 public      ed25519:LPiUZUt7_kzIUKm5LX4v4RUEXwocMKv1uJ4_sTmx6Zc
 X25519 private      AFrT5h44MRTokzB0U6z4Jesw-ISu-CTuXvFnIMZbzUQ
 X25519 public       O7KNWfmBVF214-z17qtor-Hl4UWIDOerTw_nad9Vn1Q
-tunnel IPv6         fd3c:17bf:841a:c032:7363:cc99:1f53:7068
+tunnel IPv6         fdea:9171:7e2f:c57a:5d92:7d7:169b:67fb
 ```
 
 Two more, for the other examples in this document:
 
 ```
-ed25519:RiIietSaPS1BIwoDjJtq_H5OiJO7FzmNRWH62dVzAy4   X25519 ZyiKXtHwO8WII5IaVVZ4lAkdSxMpJbBLj9bgQIMYPyI   fd0f:472e:9ba9:5f47:2a1:687:2a91:31bb
-ed25519:n9FEURJ_gkrW79iufklyF_R2zafg1by5LBPn729ZbX8   X25519 amAAZlbWvJy9euONBWinCfIafFkUiG80p8Mam8DPIjY   fd0c:ac06:baa3:20fa:6f77:432d:1957:5d29
+ed25519:RiIietSaPS1BIwoDjJtq_H5OiJO7FzmNRWH62dVzAy4   X25519 ZyiKXtHwO8WII5IaVVZ4lAkdSxMpJbBLj9bgQIMYPyI   fdce:9008:d7a9:cfc8:d5ae:6d27:a044:27b1
+ed25519:n9FEURJ_gkrW79iufklyF_R2zafg1by5LBPn729ZbX8   X25519 amAAZlbWvJy9euONBWinCfIafFkUiG80p8Mam8DPIjY   fde2:7d22:f09f:840d:8eee:33d6:ff30:30d4
 ```
 
 The consequence that matters: an `ed25519:` key alone is enough to build a WireGuard peer for it. A peer that learns a key and an endpoint, by `introduce` or out of band, can dial with full mutual authentication. Nothing else travels with the key.
+
+The conversion drops the sign of the Ed25519 point's x coordinate, so the two Ed25519 keys that differ only in that bit share one tunnel key. Whoever holds the private key of one holds the other's, its negation, so this does not let anyone claim a key they do not hold. Peers compare identities by the full Ed25519 key, and `hello` says which of the two a peer uses (section 10.1).
 
 Using one key for both signing and Diffie-Hellman is a deliberate choice. The combination has a security proof (Thormarker, "On using the same key pair for Ed25519 and an X25519 based KEM", 2021) and years of deployment. A peer MUST NOT use its identity key for any other purpose than AWP grants and AWP tunnels.
 
 4.3 The tunnel address
 
-WireGuard carries IP packets, so each peer has an IPv6 address inside the tunnel, derived from its key and needing no coordination:
+WireGuard carries IP packets, so each peer has an IPv6 address inside the tunnel, derived from its tunnel key and needing no coordination:
 
 ```
-tunnel IPv6 = 0xfd || SHA-256("awp-ula-v1" || ed25519 public key bytes)[0:15]
+tunnel IPv6 = 0xfd || SHA-256("awp-ula-v1" || X25519 public key bytes)[0:15]
 ```
+
+It is derived from the tunnel key rather than the Ed25519 key because a responder learns only the tunnel key from a handshake.
 
 A peer's WireGuard `AllowedIPs` for a remote key is that key's /128. AWP listens on TCP port 1 of its own tunnel address. Nothing else is routed.
 
@@ -137,15 +141,18 @@ What the handshake establishes, and what AWP relies on:
 - The pre-shared key is mixed in. Without it the handshake fails. A packet that does not carry a valid `mac1`, which needs the responder's public key, is dropped without a reply. To anyone without the address, a listening peer is silent.
 - Sessions roam. A peer whose carrier address changes, a sandbox that woke on a new IP or a laptop that moved networks, keeps sending; the other side adopts the new endpoint on the first authenticated packet. The connection survives what used to end it.
 
-5.2 Admission
+5.2 Admission and pre-shared keys
 
-Standard WireGuard only handshakes with peers it was configured with. An AWP listener is open to anyone holding its address, so:
+Standard WireGuard only handshakes with peers it was configured with, and both sides of a pair must use the same pre-shared key. AWP settles both from the address:
 
-- A listener MUST accept a handshake initiation from any static key when the initiation carries the listener's pre-shared key, and add that key as a peer with its derived tunnel IPv6 as `AllowedIPs`, unless local policy names an allow list, in which case keys off the list are dropped silently.
+- A listener has a pre-shared key of its own, the one in the addresses it hands out. It MUST accept a handshake initiation from a key it has not met when the initiation uses that pre-shared key, and add the key as a peer with its tunnel IPv6 as `AllowedIPs`, unless local policy names an allow list, in which case keys off the list are dropped silently.
+- The first time two peers connect, the pre-shared key they used becomes theirs: the pair's key. Both remember it, the dialer once its stream opens and the listener once it accepts a stream from that key, and both use it for that peer from then on, whoever dials. Rotating the listener's own key changes nothing for pairs already made.
+- A dialer tries the pair's key first when it has one, then the pre-shared key of the address it was given, then none if the address has none, and remembers the one that worked.
+- A peer that listens on no carrier admits only keys it has a pair's key for: peers it has met.
 - A dialer only ever handshakes with the key in the address it was given, or a key it already knows.
 - Admission at the tunnel is not acceptance at the protocol. After `hello` (section 10) a peer MAY still refuse the key.
 
-Rotating the pre-shared key invalidates every address that was ever shared. That is how a listener revokes reachability.
+Rotating the listener's pre-shared key invalidates every address that was ever shared, for every key not met yet. That is how a listener revokes reachability. Peers already met keep their pair's key; to shut one of them out, refuse its key at `hello`.
 
 5.3 The stream
 
@@ -169,25 +176,27 @@ awp1<base64url, unpadded, of CBOR { key, psk, ep }>
 |-------|------|---------|
 | `key` | 32 bytes | the listener's Ed25519 public key |
 | `psk` | 32 bytes, optional | WireGuard pre-shared key. Without it the listener accepts any key that knows its public key; that is only sensible on a private network. |
-| `ep` | array of `{k, v}` | endpoints, in the order the listener prefers them tried. `k` is a carrier kind, `v` its string form (section 7). |
+| `ep` | array of `{k, v}` | endpoints, in the order the listener prefers them. `k` is a carrier kind, `v` its string form (section 7). |
 
 CBOR with the deterministic encoding of RFC 8949 section 4.2, so the same endpoints give the same address. Unknown endpoint kinds MUST be ignored. Unknown map keys MUST be ignored.
 
-Example: the key above, a pre-shared key, and three endpoints (direct UDP on a public IPv6, a tailcat DERP region, a WebSocket through a Cloudflare quick tunnel):
+Example: the key above, a pre-shared key, and three endpoints (direct UDP on a public IPv6, a tailcat address, a WebSocket through a Cloudflare quick tunnel):
 
 ```
-awp1o2NrZXlYICz4lGVLe_5MyFCpuS1-L-EVBF8KHDCr9bieP7E5semXY3Bza1gggIe5vml_Ot3W2NBlv6eI6PG7aUjFaRh9tesLf2Ho9mFiZXCDomFrY3VkcGF2eBtbMmEwOTo4MjgwOjE6OjQ6MWIyY106NDE2NDGiYWtkZGVycGF2YzMwMqJha2J3c2F2eCx3c3M6Ly9xdWlldC1vdHRlci03ZjNhLnRyeWNsb3VkZmxhcmUuY29tL2F3cA
+awp1o2JlcIOiYWtjdWRwYXZ4G1syYTA5OjgyODA6MTo6NDoxYjJjXTo0MTY0MaJha2d0YWlsY2F0YXZ4OnRjb21Gd1dDQ2NqUzVuS05xQW9kMDM0bldvSlpXMExacURoaEM4VV9kS2RuRFJZUTh1TkdGcEdRRXWiYWtid3Nhdngsd3NzOi8vcXVpZXQtb3R0ZXItN2YzYS50cnljbG91ZGZsYXJlLmNvbS9hd3Bja2V5WCAs-JRlS3v-TMhQqbktfi_hFQRfChwwq_W4nj-xObHpl2Nwc2tYIICHub5pfzrd1tjQZb-niOjxu2lIxWkYfbXrC39h6PZh
 ```
 
 decodes to
 
 ```
-{ "key": <ed25519:LPiUZUt7_kzIUKm5LX4v4RUEXwocMKv1uJ4_sTmx6Zc>,
-  "psk": <gIe5vml_Ot3W2NBlv6eI6PG7aUjFaRh9tesLf2Ho9mE>,
-  "ep":  [ {"k":"udp",  "v":"[2a09:8280:1::4:1b2c]:41641"},
-           {"k":"derp", "v":"302"},
-           {"k":"ws",   "v":"wss://quiet-otter-7f3a.trycloudflare.com/awp"} ] }
+{ "ep":  [ {"k":"udp",     "v":"[2a09:8280:1::4:1b2c]:41641"},
+           {"k":"tailcat", "v":"tcomFwWCCcjS5nKNqAod034nWoJZW0LZqDhhC8U_dKdnDRYQ8uNGFpGQEu"},
+           {"k":"ws",      "v":"wss://quiet-otter-7f3a.trycloudflare.com/awp"} ],
+  "key": <ed25519:LPiUZUt7_kzIUKm5LX4v4RUEXwocMKv1uJ4_sTmx6Zc>,
+  "psk": <gIe5vml_Ot3W2NBlv6eI6PG7aUjFaRh9tesLf2Ho9mE> }
 ```
+
+Without `psk`, the same address is the one the peer sends about itself in `hello` (section 10.1): where it is, but not the secret that admits strangers.
 
 Rules
 
@@ -201,7 +210,9 @@ A carrier moves WireGuard datagrams of up to 1280 bytes between two peers and re
 
 That contract is the whole of what a carrier implements: open, send a datagram to an endpoint, receive a datagram with its source endpoint, close. Everything else, the handshake, admission, the stream, resume, is the same code above it. Plugging in a carrier is a few hundred lines and no change to the protocol; adding one is defining a kind string and its `v` form.
 
-Four kinds are defined. An implementation MUST support `udp` and `unix`, SHOULD support `tailcat` and `ws`. The reference implementation ships all four, and listens on `tailcat` by default: `awp listen` with no flags does what it did in draft 1, prints one address, and works from behind any NAT.
+A carrier built on connections rather than datagrams, a byte stream or a WebSocket, carries each datagram as one message: on a byte stream, prefixed by its length as a 16-bit big-endian integer. The dialing side opens connections as it has datagrams to send and reopens them when they break; datagrams that arrive on an accepted connection are answered on it.
+
+Four kinds are defined. An implementation MUST support `udp` and `unix`, SHOULD support `tailcat` and `ws`. The reference implementation ships all four, and listens on `tailcat` by default: `awp up` with no configuration prints one address that works from behind any NAT.
 
 7.1 `udp`
 
@@ -209,27 +220,29 @@ Four kinds are defined. An implementation MUST support `udp` and `unix`, SHOULD 
 
 7.2 `tailcat`
 
-`v` is a DERP region id from the tailcat DERP map, or an embedded region. This is tailcat's data plane (Tailscale's magicsock): the dialer sends a bootstrap packet to the listener through the DERP relay, both sides learn each other's candidate endpoints, NAT traversal upgrades to a direct UDP path when it can, and DERP relays the WireGuard packets when it cannot. The listener's WireGuard key is its identity key, so no node key is generated; the path-discovery key stays separate, since it travels in cleartext on direct paths. The pre-shared key from the address is the same one WireGuard uses on every other carrier.
+`v` is a tailcat address, as `tailcat` prints it (`tc...`). The listener runs a tailcat server; the dialer opens a tailcat connection to its port 1; WireGuard datagrams travel on that connection, length-prefixed as above. Tailcat does the hard part: the dialer reaches the listener through a DERP relay, both sides learn each other's candidate endpoints, NAT traversal upgrades to a direct UDP path when it can, and DERP relays when it cannot.
 
-This is the carrier for laptops and sandboxes without a reachable address, and the default the reference implementation listens on. WireGuard is the floor; tailcat is how the floor reaches through NAT, and it is meant to stay the path of least resistance: the reference embeds the tailcat library, keeps the listener's DERP region in `~/.awp/`, and needs no flag, no account and no root to use it.
+Tailcat is itself WireGuard, with keys and a pre-shared key of its own inside its address. For AWP that outer layer is a carrier like any other and trusted for nothing: the AWP tunnel runs inside it, between the identity keys, with the AWP address's pre-shared key. A listener SHOULD keep its tailcat key across restarts, so the endpoint stays the same.
+
+This is the carrier for laptops and sandboxes without a reachable address, and the default the reference implementation listens on. WireGuard is the floor; tailcat is how the floor reaches through NAT, and it is meant to stay the path of least resistance: the reference embeds the tailcat library, keeps the listener's tailcat key in `~/.awp/`, and needs no flag, no account and no root to use it.
 
 7.3 `ws`
 
 `v` is a `wss://` or `ws://` URL. Each WireGuard datagram is one binary WebSocket message; the WebSocket subprotocol is `awp.wg.1`. The listener accepts WebSocket upgrades at the URL's path; the dialer opens one WebSocket per tunnel.
 
-This carrier exists for networks that block UDP, for browsers, and for HTTP tunnel providers. A Cloudflare quick tunnel is the smallest example: the listener runs
+This carrier exists for networks that block UDP, for browsers, and for HTTP tunnel providers. A Cloudflare quick tunnel is the smallest example: the listener serves WebSockets on a local port, runs
 
 ```
 cloudflared tunnel --url http://127.0.0.1:8480
 ```
 
-and puts the `trycloudflare.com` URL it prints in its address as a `ws` endpoint. No account, and the hostname changes on every restart, which the rules in section 6 absorb. A named tunnel, ngrok, a Fly app, or a plain HTTPS reverse proxy work the same way. Every one of them terminates TLS and sees the WebSocket payload. That is fine: the payload is WireGuard.
+and puts the `trycloudflare.com` URL it prints in its address as a `ws` endpoint (the reference does all of this for `--listen cloudflare`). No account, and the hostname changes on every restart, which the rules in section 6 absorb. A named tunnel, ngrok, a Fly app, or a plain HTTPS reverse proxy work the same way. Every one of them terminates TLS and sees the WebSocket payload. That is fine: the payload is WireGuard.
 
 The dialer needs an HTTPS WebSocket client and nothing else, which every language and every browser has.
 
 7.4 `unix`
 
-`v` is a socket path. `SOCK_SEQPACKET` where the platform has it, otherwise a stream socket with each datagram prefixed by its length as a 16-bit big-endian integer. For the local daemon, tests and the SDK driver. Still WireGuard: one identity story, one code path.
+`v` is an absolute socket path. A stream socket, each datagram prefixed by its length as a 16-bit big-endian integer. For peers on one machine and for tests. Still WireGuard: one identity story, one code path.
 
 ## 8. Framing
 
@@ -277,14 +290,14 @@ B → A  resume
  "key":"ed25519:RiIietSaPS1BIwoDjJtq_H5OiJO7FzmNRWH62dVzAy4",
  "name":"claude-code@laptop",
  "caps":["chat","blob","grant","introduce"],
- "ep":[{"k":"derp","v":"302"}],
+ "addr":"awp1omJlcIGiYWtndGFpbGNhdGF2eEt0Y3BHRndXQ0RPU1JmY0FQVnp6OTBPUkk1UUFuUld1V1JUb1JyeG9uWklvRnBocXA4MmJtRnJXQ0FPbFFPVndiRFN1ODlzTVd1OFNja2V5WCBGIiJ61Jo9LUEjCgOMm2r8fk6Ik7sXOY1FYfrZ1XMDLg",
  "about":"Coding agent working on repo fly-apps/foo, branch kyle/refactor"}
 ```
 
 - `v` is the protocol major version, 1 for this document. A peer that sees a `v` it does not speak sends `err` code `version` and closes.
-- `key` is the sender's identity key. It MUST equal the tunnel's remote static key, converted; if it does not, the receiver sends `err` code `auth` and closes. A peer that sees its own key MUST do the same.
+- `key` is the sender's identity key. Converted as in section 4.2, it MUST equal the tunnel's remote static key; if it does not, the receiver sends `err` code `auth` and closes. A peer that sees its own key MUST do the same.
 - `caps` lists supported message families beyond the mandatory core: `blob`, `grant`, `introduce`. `chat` MAY be listed and is ignored.
-- `ep` lists endpoints where the sender can be reached, in the address format's `ep` form, so the other side can reconnect to it later (section 10.3). Optional; a peer behind a NAT with no listener sends none.
+- `addr` is the sender's own address without its pre-shared key (section 6), so the other side can reconnect to it later (section 10.3). The pair's pre-shared key admits it. Optional; a peer that listens on nothing sends none.
 - `grants` is optional and carries grant objects (section 13.2) the sender presents.
 - `about` is free text for the other agent's context.
 
@@ -307,7 +320,7 @@ Connections drop. Sandboxes sleep, laptops close, relays time out. AWP treats th
 Sleep specifically:
 
 - A sleeping sandbox cannot initiate. The awake side owns reconnection. It retries every endpoint it knows for the key, with exponential backoff capped at 60 seconds, for as long as it has unacked messages or open threads for that peer. A thread is open until either side reported `done`, `failed` or `closed`. There is no give-up timeout by default.
-- Either side can be the awake one: a listener that has results queued for a dialer that went away dials the endpoints from the dialer's `hello`, after a grace period so it does not race the dialer's own reconnect.
+- Either side can be the awake one: a listener that has results queued for a dialer that went away dials the address from the dialer's `hello`, after a grace period so it does not race the dialer's own reconnect.
 - Connecting to a sleeping sandbox is the wake signal when the platform supports wake-on-connect. A platform-routed carrier, such as a `ws` endpoint through the sandbox's HTTP URL, is what makes that work; a relay-only listener cannot be woken by its relay.
 - Missed pings mark the connection dead, never the thread. Thread state only changes by an explicit `state` message.
 - Messages sent while disconnected are queued in the outbox and delivered on resume. Sending never fails because the peer is asleep.
@@ -482,11 +495,11 @@ This grant is real: `sig` verifies with `iss` over the object without `sig` in c
 
 ```json
 {"t":"introduce","id":"01M32ER6VR2S4261R0SZ51JRF6","ts":"2026-09-29T17:03:23.000Z","th":"thr_9k2",
- "peer":{"key":"ed25519:n9FEURJ_gkrW79iufklyF_R2zafg1by5LBPn729ZbX8","name":"codex@sprite-11","ep":[{"k":"derp","v":"302"},{"k":"udp","v":"[fdaa:0:1:a7b:1:2:3:4]:41641"}]},
+ "peer":{"key":"ed25519:n9FEURJ_gkrW79iufklyF_R2zafg1by5LBPn729ZbX8","name":"codex@sprite-11","address":"awp1o2JlcIGiYWtjdWRwYXZ4HFtmZGFhOjA6MTphN2I6MToyOjM6NF06NDE2NDFja2V5WCCf0URREn-CStbv2K5-SXIX9HbNp-DVvLksE-fvb1ltf2Nwc2tYIPZcBK48nV3TTJZ5oDd62Dl18GwUgkWsCh5sC9BN9Y0M"},
  "grant":{"iss":"ed25519:LPiUZUt7_kzIUKm5LX4v4RUEXwocMKv1uJ4_sTmx6Zc","sub":"ed25519:RiIietSaPS1BIwoDjJtq_H5OiJO7FzmNRWH62dVzAy4","caps":["chat"],"exp":"2026-09-30T17:00:00Z","nonce":"wWwIdFg98CQAy1Ug3APRPA","sig":"68CCbfC0tCS75HRHNXX9X4IzQDH3kITDwL_ES0277i6b6Qh4zaNBR1s09d670r2KdaSndEJteVvbQd30lUMUCA","aud":"ed25519:n9FEURJ_gkrW79iufklyF_R2zafg1by5LBPn729ZbX8"}}
 ```
 
-B introduces C to A. `peer` carries C's key and endpoints; nothing else is needed to dial C, because the key is the tunnel key. `grant` is issued by B (`iss`) to A (`sub`) for C to honor (`aud`); C honors it only if it trusts B with `introduce`. C's pre-shared key, if C uses one, is not in the introduction: either C accepts introduced peers without one, or B passes C's address out of band. Whether the recipient connects is up to it.
+B introduces C to A. `peer` carries C's key and address; nothing else is needed to dial C, because the key is the tunnel key. The address carries C's pre-shared key when B holds it, because B dialed C with an address that had it: introducing is handing on reachability, and a peer that grants `introduce` has agreed to that. `grant` is issued by B (`iss`) to A (`sub`) for C to honor (`aud`); C honors it only if it trusts B with `introduce`. Whether the recipient connects is up to it.
 
 ## 14. Conventions for coding agents
 
@@ -503,7 +516,7 @@ A on a laptop delegates a test run to B on a sprite. B listened and shared its a
 
 ```
 > {"t":"hello","id":"a1","ts":"...","v":1,"key":"ed25519:RiIi…","name":"claude-code@laptop","caps":["blob"]}
-< {"t":"hello","id":"b1","ts":"...","v":1,"key":"ed25519:LPiU…","name":"claude-code@sprite-7f3a","caps":["blob","grant"],"ep":[{"k":"derp","v":"302"}]}
+< {"t":"hello","id":"b1","ts":"...","v":1,"key":"ed25519:LPiU…","name":"claude-code@sprite-7f3a","caps":["blob","grant"],"addr":"awp1…"}
 > {"t":"resume","id":"a2","ts":"...","seen":{}}
 < {"t":"resume","id":"b2","ts":"...","seen":{}}
 > {"t":"msg","id":"a3","ts":"...","th":"t1","subject":"Run integration suite on kyle/refactor","parts":[{"k":"text","text":"Please run `make integration` at commit a1b2c3 and send me failures."},{"k":"data","mime":"application/json","data":{"repo":"fly-apps/foo","commit":"a1b2c3"}}]}
@@ -547,7 +560,7 @@ Same pair, no sleep. A's laptop switches from wifi to a phone hotspot mid-run. A
 
 ## 16. Security considerations
 
-- The address is a bearer secret for reaching `hello`. Treat it like a password: share over a channel you trust, rotate the pre-shared key to revoke every copy.
+- The address is a bearer secret for reaching `hello`. Treat it like a password: share over a channel you trust, rotate the pre-shared key to revoke every copy for peers not met yet. The address a peer sends in `hello` has no pre-shared key and admits no one new.
 - Keys are long-lived by default. Agents on ephemeral sandboxes SHOULD generate a fresh key per sandbox and print its fingerprint in their `about`.
 - Peer authentication is WireGuard's. Nothing on the stream needs a signature, and nothing on the stream can come from anyone but the tunnel's remote key. `hello.key` is a consistency check, not the authentication.
 - Carriers and relays are untrusted. DERP, a Cloudflare tunnel, a WebSocket proxy or a UDP forwarder see ciphertext, volume, timing and, where they address by key, the tunnel public keys. They cannot read, inject, or impersonate. There is no plaintext binding in this protocol.
@@ -590,7 +603,8 @@ awp-plugin/
 ```
 
 - The binary `awp` is the reference peer: a daemon per awp home (`~/.awp/`) that owns the key, the tunnels and every carrier, plus a CLI and an MCP server over it:
-  - `awp listen` prints the address, runs until killed, writes inbound messages to stdout as NDJSON and to a local inbox. With no flags it listens on tailcat; `--udp host:port` and `--ws URL` add endpoints to the address.
+  - `awp up` starts the daemon and prints the address. It listens on tailcat unless configured otherwise: `awp daemon --listen udp:HOST:PORT`, `--listen ws:HOST:PORT=URL`, `--listen cloudflare` or `--listen unix:/path`, repeatable, or `AWP_LISTEN`. `awp address --rotate` replaces the pre-shared key.
+  - `awp listen` prints the address, runs until killed, writes inbound messages to stdout as NDJSON and to a local inbox.
   - `awp connect <address>` opens a connection and keeps it in the background.
   - `awp send <peer> [--thread t] <text>` sends a `msg`.
   - `awp tail [--thread t]` streams inbound messages.
@@ -605,7 +619,7 @@ A daemon rather than a per-session process, because the awake side must keep ret
 WireGuard, NAT traversal and a userspace TCP stack are a substantial dependency, and no equivalent of wireguard-go exists in Python or TypeScript. The protocol is defined so that this is a packaging problem, not a protocol one: an SDK in another language does not implement the tunnel. It uses the reference peer for it, in one of two ways.
 
 - Behind the daemon. The SDK speaks NDJSON to the local `awp` daemon over a Unix socket, and the daemon owns the identity, the tunnels and every carrier. No cryptography in the SDK, one binary dependency, and the same connections are visible to the CLI, the MCP server and the harness plugin.
-- Through the helper. `awp tunnel <address>` dials the address, completes the WireGuard handshake, opens the stream, and pipes it to stdin and stdout; `awp tunnel --listen` does the same for the listening side, printing the address first. The SDK keeps its own key, hands it to the helper, and speaks the protocol from section 8 onward itself. This is the route for an SDK that wants to be a complete peer without a daemon.
+- Through the helper. `awp tunnel` is the tunnel alone, one process per SDK peer, given the SDK's own key. It listens on the carriers it is told, prints the address as a JSON line on stdout, forwards each stream a peer opens to a Unix socket of the SDK's, and opens streams on request over a control socket of its own. It enforces section 10.1 itself: a stream whose first line is a `hello` naming a key other than the tunnel's gets `err auth` and is closed before the SDK sees it. It exits when its stdin closes. The SDK speaks the protocol from section 8 onward itself. This is the route for an SDK that wants to be a complete peer without a daemon.
 
 Both routes are conformant peers: `awp conform` cannot tell them from the Go peer, because the tunnel is the same code. A native tunnel in another language (Noise IK plus the WireGuard transport format, or the reference stack compiled to WebAssembly for the `ws` carrier) is possible and equally conformant, but not something the protocol asks for.
 
@@ -616,5 +630,4 @@ Both routes are conformant peers: `awp conform` cannot tell them from the Go pee
 3. Is one level of grant delegation enough, or do we want full capability chains (UCAN style)?
 4. Should a peer be able to advertise more than one key, for rotation? With the key as the tunnel key, rotation now also means a new tunnel.
 5. Should blobs be in-band, or should a second stream inside the tunnel carry them? The tunnel makes a second stream free, which changes the trade-off from draft 1.
-6. Introductions do not carry the introduced peer's pre-shared key (section 13.4). Should an introduction be allowed to, when the introducer holds `introduce` from that peer?
-7. Which further carriers earn a kind: QUIC, a dumb UDP relay, a platform-routed carrier for wake-on-connect?
+6. Which further carriers earn a kind: QUIC, a dumb UDP relay, a platform-routed carrier for wake-on-connect?
